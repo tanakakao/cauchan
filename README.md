@@ -62,8 +62,9 @@ CP932 に対応しています。
 
 ```text
 .
-├── causalmodels.py  # 因果探索モデルとグラフ生成
-├── main.py          # Streamlit UI と因果効果推定
+├── main.py          # Streamlit UI
+├── model.py         # 因果探索と因果効果推定
+├── visualization.py # ヒートマップと因果ネットワークの可視化
 └── pyproject.toml   # パッケージ情報と依存関係
 ```
 
