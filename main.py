@@ -4,20 +4,10 @@ import numpy as np
 import warnings
 warnings.filterwarnings("ignore")
 
-from sklearn.preprocessing import StandardScaler
-from dowhy import CausalModel
-from econml.dml import LinearDML, CausalForestDML
-from econml.dr import DRLearner
-from sklearn.ensemble import RandomForestRegressor
-from lightgbm import LGBMRegressor
-import streamlit.components.v1 as components
-import networkx as nx
-from pyvis.network import Network
-import matplotlib.pyplot as plt
-import seaborn as sns
 import io
 
-from causalmodels import CausalDiscovery, gcastle_model_dict
+from model import CausalDiscovery, CausalInference
+from visualization import show_heatmap, show_network
 
 @st.cache_data
 def load_data(file):
@@ -34,7 +24,16 @@ def load_data(file):
         None: サポートされていないファイル形式の場合。
     """
 
-    def read_csv_with_encodings(file, encodings=['utf-8', 'shift-jis', 'cp932']):
+    def read_csv_with_encodings(file, encodings=('utf-8', 'shift-jis', 'cp932')):
+        """候補の文字コードを順番に試してCSVを読み込む。
+
+        Args:
+            file (File): 読み込むCSVファイル。
+            encodings (tuple[str, ...]): 試行する文字コード。
+
+        Returns:
+            pandas.DataFrame | None: 読み込んだデータ。失敗時はNone。
+        """
         file_bytes = file.getvalue()  # デコードせずバイトとして取得
         for encoding in encodings:
             try:
@@ -62,105 +61,16 @@ def load_data(file):
         st.error("サポートされていないファイル形式です。CSVまたはExcelファイルをアップロードしてください。")
         return None
 
-class CausalInference:
-    """因果推論"""
-    def __init__(self, df, columns, model, causal_matrix):
-        self.df = df
-        self.model = model
-        self.columns = columns
-        self.causal_matrix = causal_matrix
-
-    def estimate(self, factor1, factor2, method):
-        selected_data = self.df[self.columns]
-        scaler = StandardScaler()
-        selected_data = pd.DataFrame(scaler.fit_transform(selected_data), columns=self.columns)
-
-        common_causes = [col for col in self.columns if col not in [factor1, factor2]]
-    
-        causal_graph = self._make_graph_str(factor1, factor2)
-        model_dowhy = CausalModel(
-            data=selected_data,
-            treatment=[factor1],
-            outcome=[factor2],
-            graph=causal_graph if method in ["LinearDML", "SCM"] else None,  # 因果関係のグラフを定義
-            common_ca2uses=common_causes
-        )
-        estimand = model_dowhy.identify_effect()
-        
-        if method == "SCM":
-            causal_estimate = model_dowhy.estimate_effect(
-                estimand,
-                method_name="backdoor.linear_regression"
-            ).value
-        elif method == "LinearDML":
-            causal_estimate = model_dowhy.estimate_effect(
-                identified_estimand=estimand,
-                method_name='backdoor.econml.dml.LinearDML',
-                target_units='ate',
-                method_params={
-                    'init_params': {
-                        'model_y': LGBMRegressor(n_estimators=100,
-                             max_depth=10, 
-                             learning_rate=.01,
-                             verbose=-1),
-                        'model_t': RandomForestRegressor(),
-                        'discrete_treatment': False
-                    },
-                    'fit_params': {}
-                }
-            ).value
-        else:
-            causal_estimate = 0
-
-        # 元のスケールでの因果効果を計算
-        treat_idx = self.columns.index(factor1)
-        outcome_idx = self.columns.index(factor2)
-        
-        treat_std = scaler.scale_[treat_idx]
-        outcome_std = scaler.scale_[outcome_idx]
-        
-        # スケールを元に戻した介入効果
-        effect_in_original_scale = causal_estimate * outcome_std / treat_std
-        
-        return effect_in_original_scale
-            
-    def _make_graph_str(self, factor1, factor2):
-        # DOT形式でDoWhy用の因果グラフを構築
-        causal_graph = "digraph {\n"
-        
-        # エッジの追加のみ（ノード定義は省略でよい）
-        for i, source in enumerate(self.columns):
-            for j, target in enumerate(self.columns):
-                if self.causal_matrix[i, j] != 0:
-                    causal_graph += f'  "{source}" -> "{target}";\n'
-
-        causal_graph += "}"
-        return causal_graph
-
-@st.cache_data
-def show_heatmap():
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(
-        st.session_state.adj_matrix,
-        annot=True,
-        cmap="coolwarm",
-        cbar=True, 
-        xticklabels=st.session_state.select_cols,
-        yticklabels=st.session_state.select_cols,
-        ax=ax
-    )
-    st.pyplot(fig)
-
-
-@st.cache_data
-def show_network():
-    html_str = st.session_state.model.show_graph(show=False).generate_html()
- 
-    # HTMLを直接埋め込む
-    components.html(html_str, height=800, width=800)
-
-
 def select_edge(columns, i):
+    """原因と結果を選択するUIを表示する。
+
+    Args:
+        columns (list[str]): 選択肢となる列名。
+        i (int): UIラベルに使用するエッジ番号。
+
+    Returns:
+        tuple[str, str]: 選択された原因と結果。
+    """
     c1, c2, c3 = st.columns((5,1,5))
     with c1:
         edge_start = st.selectbox("原因"+str(i), columns, label_visibility="collapsed")
@@ -272,7 +182,11 @@ if uploaded_file is not None:
         
         if st.button("推論開始"):
             if factor1 and factor2:
-                inf_model = CausalInference(df, st.session_state.select_cols, st.session_state.model, st.session_state.adj_matrix)
+                inf_model = CausalInference(
+                    df,
+                    st.session_state.select_cols,
+                    st.session_state.adj_matrix,
+                )
                 causal_estimate = inf_model.estimate(factor1, factor2, method)
                 st.write(f"{factor1}が{factor2}に与える介入効果（因果効果）: ", causal_estimate)
 
@@ -280,12 +194,18 @@ if uploaded_file is not None:
         with col1:
             # 結果の表示
             st.subheader("因果関係のヒートマップ")
-            show_heatmap()
+            show_heatmap(
+                st.session_state.adj_matrix,
+                st.session_state.model.node_names,
+            )
 
         with col2:
             # 可視化
             st.subheader("因果関係のネットワーク")
-            show_network()
+            show_network(
+                st.session_state.model.node_names,
+                st.session_state.adj_matrix,
+            )
 
 else:
     st.info("CSVファイルをアップロードしてください。")

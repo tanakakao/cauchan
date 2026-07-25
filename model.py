@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-import networkx as nx
-from pyvis.network import Network
 from sklearn.preprocessing import StandardScaler
 import logging
 
@@ -33,11 +31,19 @@ gcastle_model_dict = {
 }
 
 class CausalDiscovery:
+    """指定したバックエンドで因果構造を探索する。"""
+
     def __init__(
         self,
         model_name: str,
         backend: str = "castle"
     ):
+        """因果探索モデルを初期化する。
+
+        Args:
+            model_name (str): 使用する因果探索アルゴリズム名。
+            backend (str): ``castle`` または ``pgmpy``。
+        """
         self.model_name = model_name
         self.backend = backend  # "castle" or "pgmpy"
         self.node_names = []
@@ -52,6 +58,17 @@ class CausalDiscovery:
         forbidden_edges=None,
         required_edges=None
     ):
+        """データから因果構造を学習する。
+
+        Args:
+            df (pandas.DataFrame): 学習対象のデータ。
+            scale (bool): 数値変数を標準化するかどうか。
+            cat_cols (list[str] | None): カテゴリ変数の列名。
+            forbidden_parents (list[str] | None): 原因にしない変数。
+            forbidden_children (list[str] | None): 結果にしない変数。
+            forbidden_edges (list[tuple[str, str]] | None): 禁止するエッジ。
+            required_edges (list[tuple[str, str]] | None): 必須のエッジ。
+        """
 
         # カテゴリ列処理
         cat_cols = cat_cols or df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -78,6 +95,17 @@ class CausalDiscovery:
         forbidden_edges,
         required_edges
     ):
+        """gCastleを使用して因果構造を学習する。
+
+        Args:
+            df (pandas.DataFrame): 学習対象のデータ。
+            scale (bool): 数値変数を標準化するかどうか。
+            cat_cols (list[str]): カテゴリ変数の列名。
+            forbidden_parents (list[str] | None): 原因にしない変数。
+            forbidden_children (list[str] | None): 結果にしない変数。
+            forbidden_edges (list[tuple[str, str]] | None): 禁止するエッジ。
+            required_edges (list[tuple[str, str]] | None): 必須のエッジ。
+        """
 
         # カテゴリ変数処理
         if cat_cols is None:
@@ -195,6 +223,17 @@ class CausalDiscovery:
         forbidden_edges,
         required_edges
     ):
+        """pgmpyを使用して因果構造を学習する。
+
+        Args:
+            df (pandas.DataFrame): 学習対象のデータ。
+            scale (bool): 数値変数を標準化するかどうか。
+            cat_cols (list[str]): カテゴリ変数の列名。
+            forbidden_parents (list[str] | None): 原因にしない変数。
+            forbidden_children (list[str] | None): 結果にしない変数。
+            forbidden_edges (list[tuple[str, str]] | None): 禁止するエッジ。
+            required_edges (list[tuple[str, str]] | None): 必須のエッジ。
+        """
 
         self.node_names = df.columns.tolist()
         
@@ -255,55 +294,104 @@ class CausalDiscovery:
         self.causal_matrix = self._causal_matrix()
 
     def _causal_matrix(self):
+        """推定済みDAGを隣接行列へ変換する。
+
+        Returns:
+            numpy.ndarray: ノード順に並んだ隣接行列。
+        """
         matrix = np.zeros((len(self.node_names), len(self.node_names)))
         for u, v in self.estimated_dag.edges():
             i, j = self.node_names.index(u), self.node_names.index(v)
             matrix[i, j] = 1
         return matrix
-    
-    def show_graph(self, show=True):
-        G = nx.DiGraph()
-        for col in self.node_names:
-            G.add_node(col, label=col)
 
-        for i, col1 in enumerate(self.node_names):
-            for j, col2 in enumerate(self.node_names):
-                if self.causal_matrix[i, j] != 0:
-                    edge_value = float(abs(self.causal_matrix[i, j]))  # 負の値を正の値に変換
-                    sign = float(self.causal_matrix[i, j])  # プラスかマイナスかを判断
-                    G.add_edge(
-                        col1,
-                        col2,
-                        weight=edge_value,
-                        sign=sign,
-                        title=f"{col1} → {col2}"
-                    )
 
-        # ノードの大きさを次数に応じて設定
-        node_sizes = {}
-        for node in G.nodes():
-            node_sizes[node] = G.degree(node) * 3  # 次数に応じてノードサイズを設定
-        
-        net = Network(notebook=True, directed=True)
-        net.from_nx(G)
-    
-        # ノードのサイズを設定
-        for node in net.nodes:
-            node['size'] = node_sizes[node['id']]  # サイズを設定
-            
-        # # pyvisエッジの太さを設定
-        for edge in net.edges:
-            # `weight`の値を使って`width`を設定（エッジの太さ）
-            edge['width'] = abs(edge['width']) * 4  # 重みを太さに反映（調整可能）
-    
-        # エッジの色を因果関係の符号に応じて設定
-        for edge in net.edges:
-            if edge['sign'] > 0:
-                edge['color'] = 'red'  # プラスの因果関係は赤
-            else:
-                edge['color'] = 'blue'  # マイナスの因果関係は青
-        
-        if show:
-            return net.show("temp_graph.html")
+class CausalInference:
+    """因果グラフを使用して2変数間の因果効果を推定する。"""
+
+    def __init__(self, df, columns, causal_matrix):
+        """因果推論器を初期化する。
+
+        Args:
+            df (pandas.DataFrame): 推論対象のデータ。
+            columns (list[str]): 推論に使用する列名。
+            causal_matrix (numpy.ndarray): 因果関係を表す隣接行列。
+        """
+        self.df = df
+        self.columns = columns
+        self.causal_matrix = causal_matrix
+
+    def estimate(self, factor1, factor2, method):
+        """指定した2変数間の因果効果を推定する。
+
+        Args:
+            factor1 (str): 介入変数の列名。
+            factor2 (str): 結果変数の列名。
+            method (str): 推定手法。``SCM`` または ``LinearDML``。
+
+        Returns:
+            float: 元データのスケールに換算した因果効果。
+        """
+        from dowhy import CausalModel
+        from lightgbm import LGBMRegressor
+        from sklearn.ensemble import RandomForestRegressor
+
+        selected_data = self.df[self.columns]
+        scaler = StandardScaler()
+        selected_data = pd.DataFrame(
+            scaler.fit_transform(selected_data), columns=self.columns
+        )
+        common_causes = [
+            column for column in self.columns if column not in [factor1, factor2]
+        ]
+        model_dowhy = CausalModel(
+            data=selected_data,
+            treatment=[factor1],
+            outcome=[factor2],
+            graph=self._make_graph_str() if method in ["LinearDML", "SCM"] else None,
+            common_causes=common_causes,
+        )
+        estimand = model_dowhy.identify_effect()
+
+        if method == "SCM":
+            causal_estimate = model_dowhy.estimate_effect(
+                estimand, method_name="backdoor.linear_regression"
+            ).value
+        elif method == "LinearDML":
+            causal_estimate = model_dowhy.estimate_effect(
+                identified_estimand=estimand,
+                method_name="backdoor.econml.dml.LinearDML",
+                target_units="ate",
+                method_params={
+                    "init_params": {
+                        "model_y": LGBMRegressor(
+                            n_estimators=100,
+                            max_depth=10,
+                            learning_rate=0.01,
+                            verbose=-1,
+                        ),
+                        "model_t": RandomForestRegressor(),
+                        "discrete_treatment": False,
+                    },
+                    "fit_params": {},
+                },
+            ).value
         else:
-            return net
+            raise ValueError("method must be either 'SCM' or 'LinearDML'")
+
+        treat_idx = self.columns.index(factor1)
+        outcome_idx = self.columns.index(factor2)
+        return causal_estimate * scaler.scale_[outcome_idx] / scaler.scale_[treat_idx]
+
+    def _make_graph_str(self):
+        """DoWhyに渡すDOT形式の因果グラフを生成する。
+
+        Returns:
+            str: DOT形式の有向グラフ。
+        """
+        causal_graph = "digraph {\n"
+        for i, source in enumerate(self.columns):
+            for j, target in enumerate(self.columns):
+                if self.causal_matrix[i, j] != 0:
+                    causal_graph += f'  "{source}" -> "{target}";\n'
+        return causal_graph + "}"

@@ -26,4 +26,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["causalmodels", "main"]
+py-modules = ["main", "model", "visualization"]
