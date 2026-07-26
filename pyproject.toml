@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cauchan"
 version = "0.1.0"
-description = "Streamlit application for causal discovery, inference, and visualization"
+description = "Application for causal discovery, inference, and visualization"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "dowhy>=0.11",
     "econml>=0.15",
+    "fastapi>=0.115",
     "gcastle>=1.0.3",
     "lightgbm>=4.0",
     "matplotlib>=3.8",
@@ -19,11 +20,13 @@ dependencies = [
     "openpyxl>=3.1",
     "pandas>=2.1",
     "pgmpy>=0.1.25",
+    "python-multipart>=0.0.9",
     "pyvis>=0.3.2",
     "scikit-learn>=1.4",
     "seaborn>=0.13",
     "streamlit>=1.31",
+    "uvicorn[standard]>=0.30",
 ]
 
-[tool.setuptools]
-py-modules = ["main", "model", "visualization"]
+[tool.setuptools.packages.find]
+where = ["src"]
