@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import networkx as nx
 from sklearn.preprocessing import StandardScaler
 import logging
 
@@ -341,15 +342,11 @@ class CausalInference:
         selected_data = pd.DataFrame(
             scaler.fit_transform(selected_data), columns=self.columns
         )
-        common_causes = [
-            column for column in self.columns if column not in [factor1, factor2]
-        ]
         model_dowhy = CausalModel(
             data=selected_data,
             treatment=[factor1],
             outcome=[factor2],
             graph=self._make_graph_str() if method in ["LinearDML", "SCM"] else None,
-            common_causes=common_causes,
         )
         estimand = model_dowhy.identify_effect()
 
@@ -383,15 +380,97 @@ class CausalInference:
         outcome_idx = self.columns.index(factor2)
         return causal_estimate * scaler.scale_[outcome_idx] / scaler.scale_[treat_idx]
 
+    def _make_dag(self):
+        """隣接行列をDoWhyで利用可能なDAGへ変換する。
+
+        PC法では、向きが確定しない辺が隣接行列上の双方向辺として
+        表現される。確定済みの有向辺からトポロジカル順序を求め、
+        未確定辺をその順序に沿って向けることで循環を防ぐ。
+
+        Returns:
+            networkx.DiGraph: 全カラムをノードとして含むDAG。
+
+        Raises:
+            ValueError: 行列形状が不正、自己ループまたは有向閉路を含む場合。
+        """
+        matrix = np.asarray(self.causal_matrix)
+        n_columns = len(self.columns)
+        expected_shape = (n_columns, n_columns)
+
+        if matrix.shape != expected_shape:
+            raise ValueError(
+                "causal_matrixの形状がcolumnsと一致しません。"
+                f" expected={expected_shape}, actual={matrix.shape}"
+            )
+
+        if np.any(np.diag(matrix) != 0):
+            raise ValueError("causal_matrixに自己ループが含まれています。")
+
+        dag = nx.DiGraph()
+        dag.add_nodes_from(self.columns)
+        undirected_edges = []
+
+        for i, source in enumerate(self.columns):
+            for j in range(i + 1, n_columns):
+                target = self.columns[j]
+                forward = matrix[i, j] != 0
+                backward = matrix[j, i] != 0
+
+                if forward and backward:
+                    undirected_edges.append((source, target))
+                elif forward:
+                    dag.add_edge(source, target)
+                elif backward:
+                    dag.add_edge(target, source)
+
+        if not nx.is_directed_acyclic_graph(dag):
+            cycles = list(nx.simple_cycles(dag))
+            raise ValueError(
+                "causal_matrixの有向辺に循環が含まれています。"
+                f" cycles={cycles[:5]}"
+            )
+
+        column_order = {node: i for i, node in enumerate(self.columns)}
+        topological_order = list(
+            nx.lexicographical_topological_sort(
+                dag,
+                key=lambda node: column_order[node],
+            )
+        )
+        order_index = {node: i for i, node in enumerate(topological_order)}
+
+        for source, target in undirected_edges:
+            if order_index[source] < order_index[target]:
+                dag.add_edge(source, target)
+            else:
+                dag.add_edge(target, source)
+
+        return dag
+
+    @staticmethod
+    def _quote_dot_node(node):
+        """DOT形式用にノード名をエスケープする。"""
+        escaped = str(node).replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
     def _make_graph_str(self):
         """DoWhyに渡すDOT形式の因果グラフを生成する。
 
         Returns:
             str: DOT形式の有向グラフ。
         """
-        causal_graph = "digraph {\n"
-        for i, source in enumerate(self.columns):
-            for j, target in enumerate(self.columns):
-                if self.causal_matrix[i, j] != 0:
-                    causal_graph += f'  "{source}" -> "{target}";\n'
-        return causal_graph + "}"
+        dag = self._make_dag()
+        lines = ["digraph {"]
+
+        # 孤立ノードを含む全変数をグラフへ明示する。
+        for node in self.columns:
+            lines.append(f"  {self._quote_dot_node(node)};")
+
+        for source, target in dag.edges():
+            lines.append(
+                f"  {self._quote_dot_node(source)} -> "
+                f"{self._quote_dot_node(target)};"
+            )
+
+        lines.append("}")
+        return "\n".join(lines)
