@@ -8,6 +8,7 @@ on:
       - "src/cauchan/api/app.py"
       - "src/cauchan/api/inference_service.py"
       - "src/cauchan/api/schemas.py"
+      - "src/cauchan/models/**"
       - "tests/test_web_port_configuration.py"
       - ".github/workflows/web.yml"
   push:
@@ -18,6 +19,7 @@ on:
       - "src/cauchan/api/app.py"
       - "src/cauchan/api/inference_service.py"
       - "src/cauchan/api/schemas.py"
+      - "src/cauchan/models/**"
       - "tests/test_web_port_configuration.py"
       - ".github/workflows/web.yml"
 
@@ -40,7 +42,7 @@ jobs:
       - name: Validate reserved ports
         run: python -m unittest discover -s tests -p "test_web_port_configuration.py"
       - name: Validate Python syntax
-        run: python -m compileall -q src/cauchan/api
+        run: python -m compileall -q src/cauchan/api src/cauchan/models
       - name: Install dependencies
         working-directory: web
         run: npm install
