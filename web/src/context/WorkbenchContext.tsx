@@ -314,7 +314,7 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
         const directedKeys = new Set(directedEdges.map(edgeKey));
         const missingRequired = requiredEdges.filter((edge) => !directedKeys.has(edgeKey(edge)));
         if (missingRequired.length) {
-          errors.push(
+          warnings.push(
             `必須エッジが最終構造にありません: ${missingRequired
               .map((edge) => `${edge.source} -> ${edge.target}`)
               .join(", ")}`,
