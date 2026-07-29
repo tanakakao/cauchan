@@ -1,23 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
 import GraphCanvas from "../components/GraphCanvas";
-import { edgesToMatrix, useWorkbench } from "../context/WorkbenchContext";
-import type { InferenceMethod, InferenceSource } from "../types";
+import { useWorkbench } from "../context/WorkbenchContext";
+import type { GraphEdgeResponse, InferenceMethod, InferenceSource } from "../types";
 
 export default function InferencePage() {
   const {
     selectedColumns,
+    structureSource,
+    setStructureSource,
     causalEdges,
+    validation,
     discovery,
+    editedDiscoveryEdges,
+    discoveryValidation,
+    unresolvedDiscoveryEdges,
     inference,
     runInference,
   } = useWorkbench();
-  const [source, setSource] = useState<InferenceSource>(discovery ? "discovery" : "manual");
+  const source: InferenceSource = structureSource;
   const [factor1, setFactor1] = useState("");
   const [factor2, setFactor2] = useState("");
   const [method, setMethod] = useState<InferenceMethod>("LinearDML");
 
   const columns = source === "discovery" ? discovery?.columns ?? [] : selectedColumns;
-  const ready = source === "discovery" ? Boolean(discovery) : causalEdges.length > 0;
+  const displayEdges = useMemo<GraphEdgeResponse[]>(() => (
+    source === "discovery"
+      ? editedDiscoveryEdges
+      : causalEdges.map((edge) => ({ ...edge, kind: "directed", weight: 1 }))
+  ), [source, editedDiscoveryEdges, causalEdges]);
+  const sourceValidation = source === "discovery" ? discoveryValidation : validation;
+  const directedCount = displayEdges.filter((edge) => edge.kind === "directed").length;
+  const ready = Boolean(
+    directedCount > 0
+    && sourceValidation?.valid !== false
+    && (source === "manual" || (discovery && unresolvedDiscoveryEdges === 0)),
+  );
 
   useEffect(() => {
     if (!columns.includes(factor1)) setFactor1(columns[0] ?? "");
@@ -26,22 +43,13 @@ export default function InferencePage() {
     }
   }, [columns, factor1, factor2]);
 
-  const displayEdges = useMemo(() => {
-    if (source === "discovery") return discovery?.edges;
-    return causalEdges.map((edge) => ({ ...edge, kind: "directed" as const, weight: 1 }));
-  }, [source, discovery, causalEdges]);
-
-  const hasManualCycleHint = source === "manual" && causalEdges.length > 0
-    ? edgesToMatrix(selectedColumns, causalEdges).some((row, index) => row[index] !== 0)
-    : false;
-
   return (
     <>
       <header className="section-header">
         <div>
           <span className="eyebrow">STEP 04 · INFERENCE</span>
-          <h2>因果効果を推定</h2>
-          <p>factor1を介入変数、factor2を結果変数として平均因果効果を推定します。</p>
+          <h2>最終因果構造で因果効果を推定</h2>
+          <p>手動構造、または探索後に編集した最終構造を使い、factor1からfactor2への平均因果効果を推定します。</p>
         </div>
         <span className={`status-chip ${inference ? "success" : ""}`}>
           {inference ? "推定済み" : "未実行"}
@@ -50,24 +58,34 @@ export default function InferencePage() {
 
       <div className="inference-layout">
         <section className="panel inference-settings">
-          <div className="panel-title"><div><span>GRAPH SOURCE</span><h3>推論に使う構造</h3></div></div>
+          <div className="panel-title"><div><span>FINAL GRAPH SOURCE</span><h3>推論に使う構造</h3></div></div>
           <div className="source-switch">
-            <button
-              type="button"
-              className={source === "discovery" ? "active" : "secondary"}
-              disabled={!discovery}
-              onClick={() => setSource("discovery")}
-            >
-              <span>◎</span><strong>探索結果</strong><small>{discovery ? discovery.model_name : "未実行"}</small>
-            </button>
             <button
               type="button"
               className={source === "manual" ? "active" : "secondary"}
               disabled={!causalEdges.length}
-              onClick={() => setSource("manual")}
+              onClick={() => setStructureSource("manual")}
             >
-              <span>→</span><strong>手動構造</strong><small>{causalEdges.length} edges</small>
+              <span>→</span><strong>手動構造</strong><small>{causalEdges.length} edges · Knowledgeで定義</small>
             </button>
+            <button
+              type="button"
+              className={source === "discovery" ? "active" : "secondary"}
+              disabled={!discovery}
+              onClick={() => setStructureSource("discovery")}
+            >
+              <span>◎</span><strong>探索後編集構造</strong><small>{discovery ? `${directedCount} directed` : "未実行"}</small>
+            </button>
+          </div>
+
+          <div className={`selected-structure-summary ${ready ? "ready" : "not-ready"}`}>
+            <div>
+              <span>SELECTED STRUCTURE</span>
+              <strong>{source === "manual" ? "手動定義をそのまま使用" : "探索結果を編集した最終構造"}</strong>
+            </div>
+            <span className={`status-chip ${ready ? "success" : "warning"}`}>
+              {ready ? "推論可能" : "要確認"}
+            </span>
           </div>
 
           <div className="form-grid">
@@ -100,7 +118,14 @@ export default function InferencePage() {
             </div>
           </div>
 
-          {hasManualCycleHint && <p className="inline-warning">自己ループを含む手動構造は利用できません。</p>}
+          {source === "discovery" && unresolvedDiscoveryEdges > 0 && (
+            <p className="inline-warning">Discovery画面で未方向エッジ{unresolvedDiscoveryEdges}件の方向を確定してください。</p>
+          )}
+          {!!sourceValidation?.errors.length && (
+            <ul className="validation-list error-list inference-validation-list">
+              {sourceValidation.errors.map((message) => <li key={message}>{message}</li>)}
+            </ul>
+          )}
           <button
             type="button"
             className="primary-action"
@@ -113,12 +138,20 @@ export default function InferencePage() {
 
         <section className="panel inference-graph-panel">
           <div className="panel-title">
-            <div><span>CAUSAL GRAPH</span><h3>{source === "discovery" ? "探索構造" : "手動構造"}</h3></div>
+            <div>
+              <span>FINAL CAUSAL GRAPH</span>
+              <h3>{source === "manual" ? "手動構造" : "探索後編集構造"}</h3>
+            </div>
+            <span className={`status-chip ${ready ? "success" : "warning"}`}>{directedCount} edges</span>
           </div>
-          {ready ? (
+          {displayEdges.length ? (
             <GraphCanvas columns={columns} resultEdges={displayEdges} editable={false} />
           ) : (
-            <div className="result-empty"><div>→</div><strong>利用可能な構造がありません</strong><p>因果探索を実行するか、Knowledge画面で因果構造を定義してください。</p></div>
+            <div className="result-empty">
+              <div>→</div>
+              <strong>利用可能な構造がありません</strong>
+              <p>Knowledge画面で手動構造を作成するか、Discovery画面で探索結果を編集してください。</p>
+            </div>
           )}
         </section>
       </div>
@@ -133,7 +166,7 @@ export default function InferencePage() {
           </div>
           <div className="inference-result-meta">
             <div><span>Method</span><strong>{inference.method}</strong></div>
-            <div><span>Graph</span><strong>{inference.discovery_id ? "Discovery" : "Manual"}</strong></div>
+            <div><span>Graph</span><strong>{source === "manual" ? "Manual" : "Discovery + Edit"}</strong></div>
             <div><span>Unit</span><strong>factor2 / factor1</strong></div>
           </div>
         </section>
