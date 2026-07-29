@@ -12,6 +12,35 @@ import type {
 
 type ResultView = "list" | "heatmap";
 
+type MethodOption = {
+  id: InferenceMethod;
+  label: string;
+  detail: string;
+};
+
+const METHODS: MethodOption[] = [
+  {
+    id: "SCM",
+    label: "Linear SCM",
+    detail: "モデル層で親変数を調整する線形回帰",
+  },
+  {
+    id: "DoWhyLinearRegression",
+    label: "DoWhy Linear",
+    detail: "DoWhyで識別して線形回帰",
+  },
+  {
+    id: "LinearDML",
+    label: "LinearDML",
+    detail: "DoWhy + EconMLで交絡を調整",
+  },
+  {
+    id: "CausalForestDML",
+    label: "CausalForestDML",
+    detail: "EconMLで異質的効果を学習",
+  },
+];
+
 function pairKey(factor1: string, factor2: string): string {
   return `${factor1}\u0000${factor2}`;
 }
@@ -196,14 +225,28 @@ export default function InferencePage() {
 
           <div className="settings-block">
             <div className="settings-title"><span>ESTIMATOR</span><strong>推定手法</strong></div>
-            <div className="method-cards">
-              <button type="button" className={method === "LinearDML" ? "active" : "secondary"} onClick={() => setMethod("LinearDML")}>
-                <strong>LinearDML</strong><small>機械学習で交絡を調整</small>
-              </button>
-              <button type="button" className={method === "SCM" ? "active" : "secondary"} onClick={() => setMethod("SCM")}>
-                <strong>SCM</strong><small>親変数調整付き線形回帰</small>
-              </button>
+            <div className="method-cards inference-method-cards">
+              {METHODS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={method === option.id ? "active" : "secondary"}
+                  onClick={() => setMethod(option.id)}
+                >
+                  <strong>{option.label}</strong>
+                  <small>{option.detail}</small>
+                </button>
+              ))}
             </div>
+            {method === "SCM" && (
+              <p className="estimator-note">DoWhyを使わず、DAG上の介入変数の親を調整する線形SCMです。</p>
+            )}
+            {method === "DoWhyLinearRegression" && (
+              <p className="estimator-note">NetworkXのDAGをDoWhyへ直接渡し、識別後にbackdoor linear regressionを実行します。</p>
+            )}
+            {method === "CausalForestDML" && (
+              <p className="estimator-note warning">介入変数の非子孫となるベースライン変数が1列以上、データが20行以上必要です。表示値は個別効果の平均です。</p>
+            )}
           </div>
 
           {source === "discovery" && unresolvedDiscoveryEdges > 0 && (
@@ -237,7 +280,7 @@ export default function InferencePage() {
             >
               {batchBusy ? "全エッジを推定中..." : `有効な全${directedCount}エッジを一括推定`}
             </button>
-            <small className="action-note">一括推定は最終構造に存在する有向エッジのみを対象にします。</small>
+            <small className="action-note">一括推定は最終構造に存在する有向エッジのみを対象にします。CausalForestDMLはエッジ数に応じて計算時間が増加します。</small>
           </div>
         </section>
 
@@ -294,7 +337,7 @@ export default function InferencePage() {
             <div><small>Method</small><strong>{batchInference.method}</strong></div>
             <div><small>Edges</small><strong>{batchInference.result_count}</strong></div>
             <div className="success"><small>Success</small><strong>{batchInference.success_count}</strong></div>
-            <div className={batchInference.failure_count ? "failure" : ""}><small>Failed</small><strong>{batchInference.failure_count}</strong></div>
+            <div className="failure"><small>Failure</small><strong>{batchInference.failure_count}</strong></div>
           </div>
 
           {resultView === "list" ? (
