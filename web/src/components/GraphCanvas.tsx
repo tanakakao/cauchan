@@ -69,6 +69,11 @@ const EDGE_COLORS: Record<EdgeMode, string> = {
   forbidden: "#d92d20",
 };
 
+// デフォルト引数で毎レンダー新しい配列を生成すると、ノード同期の
+// useLayoutEffectが連続実行されるため、共有の空配列を使用する。
+const EMPTY_EDGE_DEFINITIONS: EdgeDefinition[] = [];
+const EMPTY_STRINGS: string[] = [];
+
 function initialPosition(index: number): { x: number; y: number } {
   const columnsPerRow = 3;
   return {
@@ -167,12 +172,12 @@ function discoveryEdges(edges: GraphEdgeResponse[]): Edge<CanvasEdgeData>[] {
 
 export default function GraphCanvas({
   columns,
-  causalEdges = [],
-  requiredEdges = [],
-  forbiddenEdges = [],
+  causalEdges = EMPTY_EDGE_DEFINITIONS,
+  requiredEdges = EMPTY_EDGE_DEFINITIONS,
+  forbiddenEdges = EMPTY_EDGE_DEFINITIONS,
   resultEdges,
-  forbiddenParents = [],
-  forbiddenChildren = [],
+  forbiddenParents = EMPTY_STRINGS,
+  forbiddenChildren = EMPTY_STRINGS,
   mode = "causal",
   editable = true,
   layoutVersion = 0,
