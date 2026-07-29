@@ -5,7 +5,10 @@ import os
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from .inference_service import run_batch_inference, run_inference
 from .schemas import (
+    BatchInferenceRequest,
+    BatchInferenceResponse,
     DatasetResponse,
     DiscoveryRequest,
     DiscoveryResponse,
@@ -21,7 +24,6 @@ from .services import (
     read_dataframe,
     resolve_inference_graph,
     run_discovery,
-    run_inference,
     validate_graph,
 )
 from .store import store
@@ -38,7 +40,7 @@ def _cors_origins() -> list[str]:
 
 app = FastAPI(
     title="cauchan API",
-    version="0.1.0",
+    version="0.2.0",
     description="因果構造探索と因果効果推定を提供するAPI",
 )
 app.add_middleware(
@@ -55,6 +57,18 @@ def _bad_request(exc: ServiceError) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=str(exc),
+    )
+
+
+def _inference_error(exc: Exception, *, batch: bool = False) -> HTTPException:
+    """未処理の推論例外をCORS付きJSON応答へ変換する。"""
+    label = "一括因果効果推定" if batch else "因果効果推定"
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=(
+            f"{label}中に予期しないエラーが発生しました: "
+            f"{type(exc).__name__}: {exc}"
+        ),
     )
 
 
@@ -172,6 +186,8 @@ def infer(request: InferenceRequest) -> InferenceResponse:
         )
     except (ServiceError, ValueError) as exc:
         raise _bad_request(ServiceError(str(exc))) from exc
+    except Exception as exc:
+        raise _inference_error(exc) from exc
 
     return InferenceResponse(
         dataset_id=request.dataset_id,
@@ -184,6 +200,44 @@ def infer(request: InferenceRequest) -> InferenceResponse:
             f"{request.factor1}を1単位増加させたとき、"
             f"{request.factor2}は平均で{effect:.6g}単位変化すると推定されます。"
         ),
+    )
+
+
+@app.post("/api/v1/inference/batch", response_model=BatchInferenceResponse)
+def infer_batch(request: BatchInferenceRequest) -> BatchInferenceResponse:
+    """最終構造に含まれる全有向エッジの効果を一括推定する。"""
+    dataset = store.get_dataset(request.dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="データセットが見つかりません。")
+
+    try:
+        discovery_id, columns, causal_matrix = resolve_inference_graph(
+            store=store,
+            dataset_id=request.dataset_id,
+            discovery_id=request.discovery_id,
+            columns=request.columns,
+            causal_matrix=request.causal_matrix,
+        )
+        results = run_batch_inference(
+            dataframe=dataset.dataframe,
+            columns=columns,
+            causal_matrix=causal_matrix,
+            method=request.method,
+        )
+    except (ServiceError, ValueError) as exc:
+        raise _bad_request(ServiceError(str(exc))) from exc
+    except Exception as exc:
+        raise _inference_error(exc, batch=True) from exc
+
+    success_count = sum(result.effect is not None for result in results)
+    return BatchInferenceResponse(
+        dataset_id=request.dataset_id,
+        discovery_id=discovery_id,
+        method=request.method,
+        result_count=len(results),
+        success_count=success_count,
+        failure_count=len(results) - success_count,
+        results=results,
     )
 
 
