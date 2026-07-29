@@ -23,14 +23,16 @@ type CausalNodeData = {
   forbiddenChild: boolean;
 };
 
-type EditableEdgeData = {
-  mode: EdgeMode;
-  edge: EdgeDefinition;
-};
-
-type ResultEdgeData = {
-  resultEdge: GraphEdgeResponse;
-};
+type CanvasEdgeData =
+  | {
+      type: "editable";
+      mode: EdgeMode;
+      edge: EdgeDefinition;
+    }
+  | {
+      type: "result";
+      resultEdge: GraphEdgeResponse;
+    };
 
 export type EditableEdgeSelection = {
   mode: EdgeMode;
@@ -118,8 +120,8 @@ function editableEdges(
   causalEdges: EdgeDefinition[],
   requiredEdges: EdgeDefinition[],
   forbiddenEdges: EdgeDefinition[],
-): Edge<EditableEdgeData>[] {
-  const convert = (mode: EdgeMode, edge: EdgeDefinition): Edge<EditableEdgeData> => ({
+): Edge<CanvasEdgeData>[] {
+  const convert = (mode: EdgeMode, edge: EdgeDefinition): Edge<CanvasEdgeData> => ({
     id: `${mode}|${edge.source}|${edge.target}`,
     source: edge.source,
     target: edge.target,
@@ -131,7 +133,7 @@ function editableEdges(
       strokeDasharray: mode === "forbidden" ? "7 5" : undefined,
     },
     labelStyle: { fill: EDGE_COLORS[mode], fontWeight: 700, fontSize: 10 },
-    data: { mode, edge },
+    data: { type: "editable", mode, edge },
     animated: mode === "required",
   });
   return [
@@ -141,7 +143,7 @@ function editableEdges(
   ];
 }
 
-function discoveryEdges(edges: GraphEdgeResponse[]): Edge<ResultEdgeData>[] {
+function discoveryEdges(edges: GraphEdgeResponse[]): Edge<CanvasEdgeData>[] {
   return edges.map((edge, index) => {
     const directed = edge.kind === "directed";
     const color = directed ? "#2563eb" : "#b54708";
@@ -158,7 +160,7 @@ function discoveryEdges(edges: GraphEdgeResponse[]): Edge<ResultEdgeData>[] {
       },
       labelStyle: { fill: color, fontWeight: 700, fontSize: 10 },
       animated: false,
-      data: { resultEdge: edge },
+      data: { type: "result", resultEdge: edge },
     };
   });
 }
@@ -188,7 +190,9 @@ export default function GraphCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CausalNodeData>>(
     makeNodes(columns, parentSet, childSet, new Map(), true),
   );
-  const flowInstance = useRef<ReactFlowInstance<Node<CausalNodeData>, Edge> | null>(null);
+  const flowInstance = useRef<
+    ReactFlowInstance<Node<CausalNodeData>, Edge<CanvasEdgeData>> | null
+  >(null);
   const previousLayoutVersion = useRef(layoutVersion);
   const showsResult = resultEdges !== undefined;
 
@@ -208,7 +212,7 @@ export default function GraphCanvas({
     return () => window.cancelAnimationFrame(frame);
   }, [columnsKey, layoutVersion]);
 
-  const edges = useMemo(
+  const edges = useMemo<Edge<CanvasEdgeData>[]>(
     () => showsResult
       ? discoveryEdges(resultEdges ?? [])
       : editableEdges(causalEdges, requiredEdges, forbiddenEdges),
@@ -229,7 +233,7 @@ export default function GraphCanvas({
 
   return (
     <div className="graph-canvas" data-mode={showsResult ? "result" : mode}>
-      <ReactFlow
+      <ReactFlow<Node<CausalNodeData>, Edge<CanvasEdgeData>>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -247,16 +251,17 @@ export default function GraphCanvas({
         }}
         onEdgeClick={(_, edge) => {
           onNodeSelect?.(null);
-          if (showsResult) {
-            const resultEdge = (edge.data as ResultEdgeData | undefined)?.resultEdge;
+          const edgeData = edge.data;
+          if (edgeData?.type === "result") {
             onEditableEdgeSelect?.(null);
-            onResultEdgeSelect?.(resultEdge ? { edge: resultEdge } : null);
+            onResultEdgeSelect?.({ edge: edgeData.resultEdge });
             return;
           }
-          const editableEdge = edge.data as EditableEdgeData | undefined;
           onResultEdgeSelect?.(null);
           onEditableEdgeSelect?.(
-            editableEdge ? { mode: editableEdge.mode, edge: editableEdge.edge } : null,
+            edgeData?.type === "editable"
+              ? { mode: edgeData.mode, edge: edgeData.edge }
+              : null,
           );
         }}
         onPaneClick={() => {
@@ -266,13 +271,14 @@ export default function GraphCanvas({
         onEdgesDelete={(deleted) => {
           if (!editable) return;
           for (const edge of deleted) {
-            if (showsResult) {
-              const resultEdge = (edge.data as ResultEdgeData | undefined)?.resultEdge;
-              if (resultEdge) onRemoveResultEdge?.(resultEdge);
+            const edgeData = edge.data;
+            if (edgeData?.type === "result") {
+              onRemoveResultEdge?.(edgeData.resultEdge);
               continue;
             }
-            const editableEdge = edge.data as EditableEdgeData | undefined;
-            if (editableEdge) onRemoveEdge?.(editableEdge.mode, editableEdge.edge);
+            if (edgeData?.type === "editable") {
+              onRemoveEdge?.(edgeData.mode, edgeData.edge);
+            }
           }
           clearEdgeSelection();
         }}
