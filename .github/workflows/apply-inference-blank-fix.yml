@@ -1,0 +1,67 @@
+name: Apply inference blank screen fix
+
+on:
+  push:
+    branches:
+      - agent/fix-inference-blank-screen
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-inference-blank-screen
+          fetch-depth: 0
+
+      - name: Stabilize GraphCanvas default arrays
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("web/src/components/GraphCanvas.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          marker = '''const EDGE_COLORS: Record<EdgeMode, string> = {
+            causal: "#2563eb",
+            required: "#07875f",
+            forbidden: "#d92d20",
+          };
+          '''
+          replacement = marker + '''
+          // デフォルト引数で毎レンダー新しい配列を生成すると、ノード同期の
+          // useLayoutEffectが連続実行されるため、共有の空配列を使用する。
+          const EMPTY_EDGE_DEFINITIONS: EdgeDefinition[] = [];
+          const EMPTY_STRINGS: string[] = [];
+          '''
+          if marker not in text:
+              raise SystemExit("EDGE_COLORS marker not found")
+          text = text.replace(marker, replacement, 1)
+
+          replacements = {
+              "  causalEdges = [],": "  causalEdges = EMPTY_EDGE_DEFINITIONS,",
+              "  requiredEdges = [],": "  requiredEdges = EMPTY_EDGE_DEFINITIONS,",
+              "  forbiddenEdges = [],": "  forbiddenEdges = EMPTY_EDGE_DEFINITIONS,",
+              "  forbiddenParents = [],": "  forbiddenParents = EMPTY_STRINGS,",
+              "  forbiddenChildren = [],": "  forbiddenChildren = EMPTY_STRINGS,",
+          }
+          for before, after in replacements.items():
+              if before not in text:
+                  raise SystemExit(f"default argument not found: {before}")
+              text = text.replace(before, after, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/apply-inference-blank-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/src/components/GraphCanvas.tsx .github/workflows/apply-inference-blank-fix.yml
+          git commit -m "Inference画面の無限更新を修正"
+          git push origin HEAD:agent/fix-inference-blank-screen
