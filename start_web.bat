@@ -10,6 +10,7 @@ set "FRONTEND_PORT=5175"
 set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
 set "APP_DIR=%~dp0src"
+set "PROJECT_FILE=%~dp0pyproject.toml"
 
 rem Pass the dedicated cauchan endpoints to FastAPI and Vite.
 set "VITE_API_BASE_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1"
@@ -59,6 +60,17 @@ if not exist "%APP_DIR%\cauchan\api\app.py" (
     exit /b 1
 )
 
+if not exist "%PROJECT_FILE%" (
+    echo [ERROR] pyproject.toml was not found under:
+    echo %PROJECT_FILE%
+    echo.
+    pause
+    exit /b 1
+)
+
+call :ensure_backend_dependencies
+if errorlevel 1 exit /b 1
+
 echo Checking whether the cauchan ports are available...
 call :ensure_port_available "backend" %BACKEND_PORT%
 if errorlevel 1 exit /b 1
@@ -104,7 +116,80 @@ if not "%FRONTEND_PORT%"=="5175" exit /b 1
 if not "%HEALTH_URL%"=="http://127.0.0.1:8002/api/v1/health" exit /b 1
 if not "%VITE_API_BASE_URL%"=="http://127.0.0.1:8002/api/v1" exit /b 1
 if not exist "%APP_DIR%\cauchan\api\app.py" exit /b 1
+if not exist "%PROJECT_FILE%" exit /b 1
 echo cauchan launcher configuration is valid.
+exit /b 0
+
+:ensure_backend_dependencies
+if exist "%VENV_PYTHON%" goto ensure_venv_dependencies
+
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] uv is required to create and prepare the Python environment.
+    echo Install uv or create .venv manually.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Preparing the cauchan Python environment from pyproject.toml...
+pushd "%~dp0"
+uv run python -c "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl"
+set "DEPENDENCY_EXIT=%ERRORLEVEL%"
+popd
+if not "%DEPENDENCY_EXIT%"=="0" (
+    echo.
+    echo [ERROR] Failed to prepare the cauchan Python dependencies with uv.
+    echo Run: uv sync
+    echo.
+    pause
+    exit /b 1
+)
+exit /b 0
+
+:ensure_venv_dependencies
+"%VENV_PYTHON%" -c "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl" >nul 2>&1
+if not errorlevel 1 exit /b 0
+
+echo Required backend packages are missing from .venv.
+echo Installing the cauchan project and its dependencies...
+pushd "%~dp0"
+where uv >nul 2>&1
+if not errorlevel 1 (
+    uv pip install --python "%VENV_PYTHON%" -e .
+) else (
+    "%VENV_PYTHON%" -m pip --version >nul 2>&1
+    if errorlevel 1 (
+        popd
+        echo.
+        echo [ERROR] Neither uv nor pip is available to install dependencies.
+        echo Install uv and run start_web.bat again.
+        echo.
+        pause
+        exit /b 1
+    )
+    "%VENV_PYTHON%" -m pip install -e .
+)
+if errorlevel 1 (
+    popd
+    echo.
+    echo [ERROR] Failed to install the cauchan Python dependencies.
+    echo With uv, run: uv pip install --python .venv\Scripts\python.exe -e .
+    echo.
+    pause
+    exit /b 1
+)
+popd
+
+"%VENV_PYTHON%" -c "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Backend dependencies are still unavailable after installation.
+    echo Check the installation output above.
+    echo.
+    pause
+    exit /b 1
+)
 exit /b 0
 
 :ensure_port_available
@@ -133,6 +218,15 @@ echo ========================================
 echo cauchan FastAPI backend
 echo ========================================
 echo.
+
+if not exist "%APP_DIR%\cauchan\api\app.py" (
+    echo [ERROR] FastAPI application was not found: %APP_DIR%\cauchan\api\app.py
+    pause
+    exit /b 1
+)
+
+call :ensure_backend_dependencies
+if errorlevel 1 exit /b 1
 
 if exist "%VENV_PYTHON%" (
     echo Using repository virtual environment:
