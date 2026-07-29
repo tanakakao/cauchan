@@ -1,18 +1,26 @@
 import type {
+  AlgorithmName,
+  BatchInferenceResponse,
   DatasetResponse,
   DiscoveryResponse,
   EdgeDefinition,
   GraphValidationResponse,
   InferenceMethod,
   InferenceResponse,
-  AlgorithmName,
 } from "./types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)
   ?? "http://127.0.0.1:8002/api/v1";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, init);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`APIへ接続できませんでした (${API_BASE_URL}): ${detail}`);
+  }
+
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -85,6 +93,20 @@ export const api = {
     causal_matrix?: number[][];
   }): Promise<InferenceResponse> {
     return request("/inference", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  inferBatch(payload: {
+    dataset_id: string;
+    method: InferenceMethod;
+    discovery_id?: string;
+    columns?: string[];
+    causal_matrix?: number[][];
+  }): Promise<BatchInferenceResponse> {
+    return request("/inference/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

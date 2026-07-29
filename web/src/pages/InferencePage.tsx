@@ -1,10 +1,43 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { api } from "../api";
 import GraphCanvas from "../components/GraphCanvas";
-import { useWorkbench } from "../context/WorkbenchContext";
-import type { GraphEdgeResponse, InferenceMethod, InferenceSource } from "../types";
+import { edgesToMatrix, useWorkbench } from "../context/WorkbenchContext";
+import type {
+  BatchInferenceResponse,
+  BatchInferenceResult,
+  GraphEdgeResponse,
+  InferenceMethod,
+  InferenceSource,
+} from "../types";
+
+type ResultView = "list" | "heatmap";
+
+function pairKey(factor1: string, factor2: string): string {
+  return `${factor1}\u0000${factor2}`;
+}
+
+function formatEffect(effect: number | null): string {
+  if (effect === null || !Number.isFinite(effect)) return "—";
+  if (effect === 0) return "0";
+  return Math.abs(effect) >= 1000 || Math.abs(effect) < 0.001
+    ? effect.toExponential(3)
+    : effect.toPrecision(5);
+}
+
+function heatCellStyle(effect: number, maxAbsEffect: number): CSSProperties {
+  const ratio = maxAbsEffect > 0 ? Math.min(Math.abs(effect) / maxAbsEffect, 1) : 0;
+  const alpha = 0.12 + ratio * 0.78;
+  return {
+    backgroundColor: effect >= 0
+      ? `rgba(37, 99, 235, ${alpha})`
+      : `rgba(217, 45, 32, ${alpha})`,
+    color: ratio > 0.52 ? "#ffffff" : "var(--text)",
+  };
+}
 
 export default function InferencePage() {
   const {
+    dataset,
     selectedColumns,
     structureSource,
     setStructureSource,
@@ -16,11 +49,15 @@ export default function InferencePage() {
     unresolvedDiscoveryEdges,
     inference,
     runInference,
+    setError,
   } = useWorkbench();
   const source: InferenceSource = structureSource;
   const [factor1, setFactor1] = useState("");
   const [factor2, setFactor2] = useState("");
   const [method, setMethod] = useState<InferenceMethod>("LinearDML");
+  const [batchInference, setBatchInference] = useState<BatchInferenceResponse | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [resultView, setResultView] = useState<ResultView>("list");
 
   const columns = source === "discovery" ? discovery?.columns ?? [] : selectedColumns;
   const displayEdges = useMemo<GraphEdgeResponse[]>(() => (
@@ -28,12 +65,40 @@ export default function InferencePage() {
       ? editedDiscoveryEdges
       : causalEdges.map((edge) => ({ ...edge, kind: "directed", weight: 1 }))
   ), [source, editedDiscoveryEdges, causalEdges]);
+  const directedEdges = useMemo(
+    () => displayEdges
+      .filter((edge) => edge.kind === "directed")
+      .map(({ source: edgeSource, target }) => ({ source: edgeSource, target })),
+    [displayEdges],
+  );
   const sourceValidation = source === "discovery" ? discoveryValidation : validation;
-  const directedCount = displayEdges.filter((edge) => edge.kind === "directed").length;
+  const directedCount = directedEdges.length;
   const ready = Boolean(
     directedCount > 0
     && sourceValidation?.valid !== false
     && (source === "manual" || (discovery && unresolvedDiscoveryEdges === 0)),
+  );
+  const graphSignature = useMemo(
+    () => directedEdges.map((edge) => `${edge.source}->${edge.target}`).sort().join("|"),
+    [directedEdges],
+  );
+  const resultMap = useMemo(
+    () => new Map(
+      (batchInference?.results ?? []).map((result) => [
+        pairKey(result.factor1, result.factor2),
+        result,
+      ]),
+    ),
+    [batchInference],
+  );
+  const maxAbsEffect = useMemo(
+    () => Math.max(
+      0,
+      ...(batchInference?.results ?? [])
+        .filter((result): result is BatchInferenceResult & { effect: number } => result.effect !== null)
+        .map((result) => Math.abs(result.effect)),
+    ),
+    [batchInference],
   );
 
   useEffect(() => {
@@ -43,16 +108,39 @@ export default function InferencePage() {
     }
   }, [columns, factor1, factor2]);
 
+  useEffect(() => {
+    setBatchInference(null);
+  }, [source, method, graphSignature]);
+
+  const runBatchInference = async () => {
+    if (!dataset || !ready || !directedEdges.length) return;
+    setBatchBusy(true);
+    setError(null);
+    try {
+      const result = await api.inferBatch({
+        dataset_id: dataset.dataset_id,
+        method,
+        columns,
+        causal_matrix: edgesToMatrix(columns, directedEdges),
+      });
+      setBatchInference(result);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : String(requestError));
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   return (
     <>
       <header className="section-header">
         <div>
           <span className="eyebrow">STEP 04 · INFERENCE</span>
           <h2>最終因果構造で因果効果を推定</h2>
-          <p>手動構造、または探索後に編集した最終構造を使い、factor1からfactor2への平均因果効果を推定します。</p>
+          <p>個別の変数ペア、または最終構造に含まれる全有向エッジの因果効果を推定します。</p>
         </div>
-        <span className={`status-chip ${inference ? "success" : ""}`}>
-          {inference ? "推定済み" : "未実行"}
+        <span className={`status-chip ${inference || batchInference ? "success" : ""}`}>
+          {inference || batchInference ? "推定済み" : "未実行"}
         </span>
       </header>
 
@@ -113,7 +201,7 @@ export default function InferencePage() {
                 <strong>LinearDML</strong><small>機械学習で交絡を調整</small>
               </button>
               <button type="button" className={method === "SCM" ? "active" : "secondary"} onClick={() => setMethod("SCM")}>
-                <strong>SCM</strong><small>線形回帰による推定</small>
+                <strong>SCM</strong><small>親変数調整付き線形回帰</small>
               </button>
             </div>
           </div>
@@ -126,14 +214,31 @@ export default function InferencePage() {
               {sourceValidation.errors.map((message) => <li key={message}>{message}</li>)}
             </ul>
           )}
-          <button
-            type="button"
-            className="primary-action"
-            disabled={!ready || !factor1 || !factor2 || factor1 === factor2}
-            onClick={() => void runInference(factor1, factor2, method, source)}
-          >
-            {factor1 || "factor1"} → {factor2 || "factor2"} の効果を推定
-          </button>
+          {!!sourceValidation?.warnings.length && (
+            <ul className="validation-list warning-list inference-validation-list">
+              {sourceValidation.warnings.map((message) => <li key={message}>{message}</li>)}
+            </ul>
+          )}
+
+          <div className="inference-action-stack">
+            <button
+              type="button"
+              className="primary-action"
+              disabled={!ready || batchBusy || !factor1 || !factor2 || factor1 === factor2}
+              onClick={() => void runInference(factor1, factor2, method, source)}
+            >
+              {factor1 || "factor1"} → {factor2 || "factor2"} の効果を推定
+            </button>
+            <button
+              type="button"
+              className="primary-action secondary batch-inference-action"
+              disabled={!ready || batchBusy}
+              onClick={() => void runBatchInference()}
+            >
+              {batchBusy ? "全エッジを推定中..." : `有効な全${directedCount}エッジを一括推定`}
+            </button>
+            <small className="action-note">一括推定は最終構造に存在する有向エッジのみを対象にします。</small>
+          </div>
         </section>
 
         <section className="panel inference-graph-panel">
@@ -169,6 +274,92 @@ export default function InferencePage() {
             <div><span>Graph</span><strong>{source === "manual" ? "Manual" : "Discovery + Edit"}</strong></div>
             <div><span>Unit</span><strong>factor2 / factor1</strong></div>
           </div>
+        </section>
+      )}
+
+      {batchInference && (
+        <section className="panel batch-inference-result">
+          <div className="panel-title batch-result-header">
+            <div>
+              <span>ALL DIRECTED EDGES</span>
+              <h3>有効エッジの一括因果効果</h3>
+            </div>
+            <div className="batch-view-switch">
+              <button type="button" className={resultView === "list" ? "active" : "secondary"} onClick={() => setResultView("list")}>一覧</button>
+              <button type="button" className={resultView === "heatmap" ? "active" : "secondary"} onClick={() => setResultView("heatmap")}>ヒートマップ</button>
+            </div>
+          </div>
+
+          <div className="batch-result-summary">
+            <div><small>Method</small><strong>{batchInference.method}</strong></div>
+            <div><small>Edges</small><strong>{batchInference.result_count}</strong></div>
+            <div className="success"><small>Success</small><strong>{batchInference.success_count}</strong></div>
+            <div className={batchInference.failure_count ? "failure" : ""}><small>Failed</small><strong>{batchInference.failure_count}</strong></div>
+          </div>
+
+          {resultView === "list" ? (
+            <div className="table-wrap batch-result-table-wrap">
+              <table className="batch-result-table">
+                <thead>
+                  <tr><th>介入変数</th><th>結果変数</th><th>因果効果</th><th>状態</th></tr>
+                </thead>
+                <tbody>
+                  {batchInference.results.map((result) => (
+                    <tr key={pairKey(result.factor1, result.factor2)}>
+                      <td><strong>{result.factor1}</strong></td>
+                      <td><strong>{result.factor2}</strong></td>
+                      <td className={result.effect !== null && result.effect < 0 ? "negative-effect" : "positive-effect"}>
+                        {formatEffect(result.effect)}
+                      </td>
+                      <td>
+                        {result.error
+                          ? <span className="status-dot-label warning" title={result.error}>失敗 · {result.error}</span>
+                          : <span className="status-dot-label success">成功</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
+              <div className="heatmap-legend">
+                <span className="negative">負の効果</span>
+                <i />
+                <span>0付近</span>
+                <i />
+                <span className="positive">正の効果</span>
+              </div>
+              <div className="table-wrap effect-heatmap-wrap">
+                <table className="effect-heatmap">
+                  <thead><tr><th>from ＼ to</th>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+                  <tbody>
+                    {columns.map((row) => (
+                      <tr key={row}>
+                        <th>{row}</th>
+                        {columns.map((column) => {
+                          const result = resultMap.get(pairKey(row, column));
+                          if (row === column) return <td key={column} className="diagonal">—</td>;
+                          if (!result) return <td key={column} className="no-edge">·</td>;
+                          if (result.effect === null) return <td key={column} className="failed" title={result.error ?? "推定失敗"}>!</td>;
+                          return (
+                            <td
+                              key={column}
+                              className="effect-cell"
+                              style={heatCellStyle(result.effect, maxAbsEffect)}
+                              title={`${row} → ${column}: ${result.effect}`}
+                            >
+                              {formatEffect(result.effect)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </section>
       )}
     </>

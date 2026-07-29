@@ -6,6 +6,8 @@ on:
       - "web/**"
       - "start_web.bat"
       - "src/cauchan/api/app.py"
+      - "src/cauchan/api/inference_service.py"
+      - "src/cauchan/api/schemas.py"
       - "tests/test_web_port_configuration.py"
       - ".github/workflows/web.yml"
   push:
@@ -14,6 +16,8 @@ on:
       - "web/**"
       - "start_web.bat"
       - "src/cauchan/api/app.py"
+      - "src/cauchan/api/inference_service.py"
+      - "src/cauchan/api/schemas.py"
       - "tests/test_web_port_configuration.py"
       - ".github/workflows/web.yml"
 
@@ -35,6 +39,8 @@ jobs:
           node-version: "20"
       - name: Validate reserved ports
         run: python -m unittest discover -s tests -p "test_web_port_configuration.py"
+      - name: Validate Python syntax
+        run: python -m compileall -q src/cauchan/api
       - name: Install dependencies
         working-directory: web
         run: npm install
