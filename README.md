@@ -2,7 +2,7 @@
 
 `cauchan` は、表形式データを対象に因果構造の定義・探索・編集と因果効果推定を行うワークベンチです。
 
-React + TypeScript のWeb画面からFastAPIを操作し、次の2通りの方法で推論に使用する因果構造を決定できます。
+React + TypeScriptのWeb画面からFastAPIを操作し、次の2通りの方法で推論に使用する因果構造を決定できます。
 
 - ドメイン知識に基づいて因果構造を手動で定義する
 - PC、DirectLiNGAM、GES、HillClimbSearchで構造を探索し、探索結果を手動編集して最終構造を決定する
@@ -76,6 +76,12 @@ Windows PowerShellでは次のように仮想環境を有効化します。
 .venv\Scripts\Activate.ps1
 ```
 
+`uv` を使用する場合は、リポジトリのルートで次を実行します。
+
+```bash
+uv sync
+```
+
 ### React
 
 ```bash
@@ -83,20 +89,52 @@ cd web
 npm install
 ```
 
-## Webアプリの起動
+## Windowsでまとめて起動
+
+リポジトリ直下の `start_web.bat` をダブルクリックするか、コマンドプロンプトから実行します。
+
+```cmd
+start_web.bat
+```
+
+このバッチは次を順番に実行します。
+
+1. `npm` とPython実行環境を確認
+2. cauchan専用ポートが空いていることを確認
+3. FastAPIを別ウィンドウで起動
+4. `/api/v1/health` が応答するまで待機
+5. React開発サーバーを別ウィンドウで起動
+
+`.venv\Scripts\python.exe` が存在する場合はそのPythonを使用します。存在しない場合は `uv run python` を使用します。
+
+起動後のURL:
+
+- Web画面: `http://127.0.0.1:5175`
+- FastAPI: `http://127.0.0.1:8002`
+- OpenAPI UI: `http://127.0.0.1:8002/docs`
+- ヘルスチェック: `http://127.0.0.1:8002/api/v1/health`
+
+### bochan・malchanとの同時起動
+
+3アプリで重複しない固定ポートを使用します。
+
+| アプリ | FastAPI | React |
+|---|---:|---:|
+| bochan | 8000 | 5173 |
+| malchan | 8001 | 5174 |
+| cauchan | 8002 | 5175 |
+
+cauchanのViteは `strictPort` を有効にしているため、5175が使用中の場合に別ポートへ自動移動せず、明確なエラーで停止します。`start_web.bat` も8002と5175の使用状況を起動前に検査します。
+
+## 個別に起動
 
 ### 1. FastAPI
 
 リポジトリのルートで起動します。
 
 ```bash
-uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8000
+uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8002
 ```
-
-利用可能なURL:
-
-- OpenAPI UI: `http://127.0.0.1:8000/docs`
-- ヘルスチェック: `http://127.0.0.1:8000/api/v1/health`
 
 ### 2. React
 
@@ -107,12 +145,18 @@ cd web
 npm run dev
 ```
 
-ブラウザで `http://127.0.0.1:5173` を開きます。
+ブラウザで `http://127.0.0.1:5175` を開きます。
 
 API接続先を変更する場合は、`web/.env.example` を `web/.env` にコピーして設定します。
 
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+VITE_API_BASE_URL=http://127.0.0.1:8002/api/v1
+```
+
+FastAPIのCORS許可元を変更する場合は、カンマ区切りで `CAUCHAN_CORS_ORIGINS` を指定します。
+
+```powershell
+$env:CAUCHAN_CORS_ORIGINS="http://127.0.0.1:5175,http://localhost:5175"
 ```
 
 ## グラフ編集
@@ -176,6 +220,7 @@ npm run build
 │   ├── src/                    # React + TypeScript
 │   └── package.json
 ├── main.py                     # 従来のStreamlit UI
+├── start_web.bat               # Windows用FastAPI・React一括起動
 └── pyproject.toml
 ```
 
