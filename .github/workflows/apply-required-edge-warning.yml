@@ -1,0 +1,98 @@
+name: Apply required edge warning patch
+
+on:
+  push:
+    branches:
+      - agent/required-edge-warning
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/required-edge-warning
+          fetch-depth: 0
+
+      - name: Apply patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          context_path = Path("web/src/context/WorkbenchContext.tsx")
+          context = context_path.read_text(encoding="utf-8")
+          old_context = '''        if (missingRequired.length) {
+          errors.push(
+            `必須エッジが最終構造にありません: ${missingRequired
+              .map((edge) => `${edge.source} -> ${edge.target}`)
+              .join(", ")}`,
+          );
+        }'''
+          new_context = '''        if (missingRequired.length) {
+          warnings.push(
+            `必須エッジが最終構造にありません: ${missingRequired
+              .map((edge) => `${edge.source} -> ${edge.target}`)
+              .join(", ")}`,
+          );
+        }'''
+          if old_context not in context:
+              raise SystemExit("WorkbenchContext target block was not found")
+          context_path.write_text(context.replace(old_context, new_context, 1), encoding="utf-8")
+
+          page_path = Path("web/src/pages/DiscoveryPage.tsx")
+          page = page_path.read_text(encoding="utf-8")
+          old_status = '''        <span className={`status-chip ${discoveryValidation?.valid ? "success" : discovery ? "warning" : ""}`}>
+          {!discovery
+            ? "未実行"
+            : discoveryValidation?.valid
+              ? "最終構造OK"
+              : `${unresolvedDiscoveryEdges}件未確定`}
+        </span>'''
+          new_status = '''        <span
+          className={`status-chip ${
+            discoveryValidation?.valid
+              ? discoveryValidation.warnings.length
+                ? "warning"
+                : "success"
+              : discovery
+                ? "warning"
+                : ""
+          }`}
+        >
+          {!discovery
+            ? "未実行"
+            : discoveryValidation?.valid
+              ? discoveryValidation.warnings.length
+                ? "注意あり・推論可能"
+                : "最終構造OK"
+              : `${unresolvedDiscoveryEdges}件未確定`}
+        </span>'''
+          if old_status not in page:
+              raise SystemExit("DiscoveryPage status block was not found")
+          page = page.replace(old_status, new_status, 1)
+
+          old_validation = '''                  <strong>{discoveryValidation?.valid ? "推論に使用できます" : "構造の修正が必要です"}</strong>'''
+          new_validation = '''                  <strong>
+                    {discoveryValidation?.valid
+                      ? discoveryValidation.warnings.length
+                        ? "注意事項がありますが推論に使用できます"
+                        : "推論に使用できます"
+                      : "構造の修正が必要です"}
+                  </strong>'''
+          if old_validation not in page:
+              raise SystemExit("DiscoveryPage validation block was not found")
+          page_path.write_text(page.replace(old_validation, new_validation, 1), encoding="utf-8")
+
+          Path(".github/workflows/apply-required-edge-warning.yml").unlink()
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/src/context/WorkbenchContext.tsx web/src/pages/DiscoveryPage.tsx .github/workflows/apply-required-edge-warning.yml
+          git commit -m "必須エッジ不足を警告として扱う"
+          git push origin HEAD:agent/required-edge-warning
