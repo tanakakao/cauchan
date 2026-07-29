@@ -40,6 +40,17 @@ class WebPortConfigurationTest(unittest.TestCase):
         self.assertIn("127.0.0.1:5175", fastapi_app)
         self.assertIn("localhost:5175", fastapi_app)
 
+    def test_launcher_resolves_src_layout_without_editable_install(self) -> None:
+        """Uvicornがsrcディレクトリからcauchanを読み込む。"""
+        launcher = (ROOT / "start_web.bat").read_text(encoding="utf-8")
+
+        self.assertIn('set "APP_DIR=%~dp0src"', launcher)
+        self.assertIn('--app-dir "%APP_DIR%"', launcher)
+        self.assertIn(
+            'if not exist "%APP_DIR%\\cauchan\\api\\app.py"',
+            launcher,
+        )
+
     def test_ports_do_not_overlap_related_apps(self) -> None:
         """cauchanの既定ポートがbochan・malchanと重複しない。"""
         related_ports = {8000, 8001, 5173, 5174}

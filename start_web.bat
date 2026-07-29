@@ -9,6 +9,7 @@ set "FRONTEND_HOST=127.0.0.1"
 set "FRONTEND_PORT=5175"
 set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
+set "APP_DIR=%~dp0src"
 
 rem Pass the dedicated cauchan endpoints to FastAPI and Vite.
 set "VITE_API_BASE_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1"
@@ -48,6 +49,14 @@ if exist "%VENV_PYTHON%" (
         exit /b 1
     )
     echo Python: uv run python
+)
+
+if not exist "%APP_DIR%\cauchan\api\app.py" (
+    echo [ERROR] FastAPI application was not found under:
+    echo %APP_DIR%\cauchan\api\app.py
+    echo.
+    pause
+    exit /b 1
 )
 
 echo Checking whether the cauchan ports are available...
@@ -94,6 +103,7 @@ if not "%FRONTEND_HOST%"=="127.0.0.1" exit /b 1
 if not "%FRONTEND_PORT%"=="5175" exit /b 1
 if not "%HEALTH_URL%"=="http://127.0.0.1:8002/api/v1/health" exit /b 1
 if not "%VITE_API_BASE_URL%"=="http://127.0.0.1:8002/api/v1" exit /b 1
+if not exist "%APP_DIR%\cauchan\api\app.py" exit /b 1
 echo cauchan launcher configuration is valid.
 exit /b 0
 
@@ -127,12 +137,16 @@ echo.
 if exist "%VENV_PYTHON%" (
     echo Using repository virtual environment:
     echo %VENV_PYTHON%
+    echo Application directory:
+    echo %APP_DIR%
     echo.
-    "%VENV_PYTHON%" -m uvicorn cauchan.api.app:app --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
+    "%VENV_PYTHON%" -m uvicorn cauchan.api.app:app --app-dir "%APP_DIR%" --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
 ) else (
     echo .venv was not found. Starting through uv run.
+    echo Application directory:
+    echo %APP_DIR%
     echo.
-    uv run python -m uvicorn cauchan.api.app:app --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
+    uv run python -m uvicorn cauchan.api.app:app --app-dir "%APP_DIR%" --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
 )
 
 set "SERVER_EXIT=%ERRORLEVEL%"
