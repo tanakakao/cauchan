@@ -1,4 +1,4 @@
-"""Webアプリの固定ポート設定を検証するテスト。"""
+"""Webアプリの起動設定を検証するテスト。"""
 
 from pathlib import Path
 import unittest
@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WebPortConfigurationTest(unittest.TestCase):
-    """bochan・malchanとの同時起動用ポートを検証する。"""
+    """bochan・malchanとの同時起動と依存関係準備を検証する。"""
 
     def test_cauchan_uses_reserved_ports_consistently(self) -> None:
         """FastAPI 8002、React 5175が各設定で一致する。"""
@@ -50,6 +50,22 @@ class WebPortConfigurationTest(unittest.TestCase):
             'if not exist "%APP_DIR%\\cauchan\\api\\app.py"',
             launcher,
         )
+
+    def test_launcher_prepares_missing_backend_dependencies(self) -> None:
+        """既存venvにFastAPIがなくてもプロジェクト依存関係を導入する。"""
+        launcher = (ROOT / "start_web.bat").read_text(encoding="utf-8")
+
+        self.assertIn(":ensure_backend_dependencies", launcher)
+        self.assertIn(
+            "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl",
+            launcher,
+        )
+        self.assertIn(
+            'uv pip install --python "%VENV_PYTHON%" -e .',
+            launcher,
+        )
+        self.assertIn('"%VENV_PYTHON%" -m pip install -e .', launcher)
+        self.assertIn('set "PROJECT_FILE=%~dp0pyproject.toml"', launcher)
 
     def test_ports_do_not_overlap_related_apps(self) -> None:
         """cauchanの既定ポートがbochan・malchanと重複しない。"""
