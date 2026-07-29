@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import GraphCanvas from "../components/GraphCanvas";
+import GraphCanvas, { type EditableEdgeSelection } from "../components/GraphCanvas";
 import { useWorkbench } from "../context/WorkbenchContext";
 import type { EdgeMode, StructureSource } from "../types";
 
@@ -26,6 +26,22 @@ function toggle(values: string[], value: string): string[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
+function hasEdge(
+  selection: EditableEdgeSelection,
+  causalEdges: Array<{ source: string; target: string }>,
+  requiredEdges: Array<{ source: string; target: string }>,
+  forbiddenEdges: Array<{ source: string; target: string }>,
+): boolean {
+  const collection = selection.mode === "causal"
+    ? causalEdges
+    : selection.mode === "required"
+      ? requiredEdges
+      : forbiddenEdges;
+  return collection.some(
+    (edge) => edge.source === selection.edge.source && edge.target === selection.edge.target,
+  );
+}
+
 export default function KnowledgePage() {
   const {
     dataset,
@@ -49,6 +65,7 @@ export default function KnowledgePage() {
     setStep,
   } = useWorkbench();
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<EditableEdgeSelection | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
 
   useEffect(() => {
@@ -57,12 +74,43 @@ export default function KnowledgePage() {
     }
   }, [structureSource, edgeMode, setEdgeMode]);
 
+  useEffect(() => {
+    if (!selectedEdge) return;
+    if (
+      (structureSource === "discovery" && selectedEdge.mode === "causal")
+      || !hasEdge(selectedEdge, causalEdges, requiredEdges, forbiddenEdges)
+    ) {
+      setSelectedEdge(null);
+    }
+  }, [selectedEdge, structureSource, causalEdges, requiredEdges, forbiddenEdges]);
+
+  useEffect(() => {
+    if (selectedNode && !selectedColumns.includes(selectedNode)) setSelectedNode(null);
+  }, [selectedNode, selectedColumns]);
+
   const visibleModes: EdgeMode[] = structureSource === "manual"
     ? ["causal", "required", "forbidden"]
     : ["required", "forbidden"];
   const canContinue = selectedColumns.length >= 2
     && validation?.valid !== false
     && (structureSource === "discovery" || causalEdges.length > 0);
+
+  const deleteSelectedEdge = () => {
+    if (!selectedEdge) return;
+    removeEdge(selectedEdge.mode, selectedEdge.edge);
+    setSelectedEdge(null);
+  };
+
+  const reverseSelectedEdge = () => {
+    if (!selectedEdge) return;
+    const reversed = {
+      source: selectedEdge.edge.target,
+      target: selectedEdge.edge.source,
+    };
+    removeEdge(selectedEdge.mode, selectedEdge.edge);
+    addEdge(selectedEdge.mode, reversed);
+    setSelectedEdge({ mode: selectedEdge.mode, edge: reversed });
+  };
 
   return (
     <>
@@ -135,7 +183,16 @@ export default function KnowledgePage() {
             </div>
             <div className="toolbar-actions">
               <button type="button" className="secondary" onClick={() => setLayoutVersion((value) => value + 1)}>自動整列</button>
-              <button type="button" className="secondary danger-text" onClick={clearEdges}>定義をクリア</button>
+              <button
+                type="button"
+                className="secondary danger-text"
+                onClick={() => {
+                  clearEdges();
+                  setSelectedEdge(null);
+                }}
+              >
+                定義をクリア
+              </button>
             </div>
           </div>
           <div className={`mode-guidance ${edgeMode}`}>
@@ -154,16 +211,41 @@ export default function KnowledgePage() {
             onAddEdge={addEdge}
             onRemoveEdge={removeEdge}
             onNodeSelect={setSelectedNode}
+            onEditableEdgeSelect={setSelectedEdge}
           />
           <div className="graph-legend">
             {structureSource === "manual" && <span className="causal">— 手動構造</span>}
             <span className="required">━ 必須</span>
             <span className="forbidden">┄ 禁止</span>
-            <small>矢印を選択してDeleteキーで削除できます。</small>
+            <small>エッジをクリックすると、右側で削除・方向反転できます。</small>
           </div>
         </section>
 
         <aside className="knowledge-side">
+          <section className="panel edge-settings-panel">
+            <div className="panel-title">
+              <div><span>EDGE EDITOR</span><h3>エッジ操作</h3></div>
+            </div>
+            {selectedEdge ? (
+              <>
+                <div className={`selected-edge-definition ${selectedEdge.mode}`}>
+                  <small>{MODE_COPY[selectedEdge.mode].label}</small>
+                  <strong>
+                    <span>{selectedEdge.edge.source}</span>
+                    <b>→</b>
+                    <span>{selectedEdge.edge.target}</span>
+                  </strong>
+                </div>
+                <div className="edge-action-grid">
+                  <button type="button" className="secondary" onClick={reverseSelectedEdge}>方向を反転</button>
+                  <button type="button" className="secondary danger-text" onClick={deleteSelectedEdge}>このエッジを削除</button>
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">キャンバス上のエッジをクリックすると、個別に方向変更や削除ができます。</div>
+            )}
+          </section>
+
           <section className="panel node-settings-panel">
             <div className="panel-title">
               <div><span>NODE POLICY</span><h3>ノード制約</h3></div>

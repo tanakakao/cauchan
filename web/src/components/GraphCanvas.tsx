@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -12,6 +12,7 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  type ReactFlowInstance,
   useNodesState,
 } from "@xyflow/react";
 import type { EdgeDefinition, EdgeMode, GraphEdgeResponse } from "../types";
@@ -22,8 +23,24 @@ type CausalNodeData = {
   forbiddenChild: boolean;
 };
 
-type ResultEdgeData = {
-  resultEdge: GraphEdgeResponse;
+type CanvasEdgeData =
+  | {
+      type: "editable";
+      mode: EdgeMode;
+      edge: EdgeDefinition;
+    }
+  | {
+      type: "result";
+      resultEdge: GraphEdgeResponse;
+    };
+
+export type EditableEdgeSelection = {
+  mode: EdgeMode;
+  edge: EdgeDefinition;
+};
+
+export type ResultEdgeSelection = {
+  edge: GraphEdgeResponse;
 };
 
 type GraphCanvasProps = {
@@ -42,6 +59,8 @@ type GraphCanvasProps = {
   onAddResultEdge?: (edge: EdgeDefinition) => void;
   onRemoveResultEdge?: (edge: GraphEdgeResponse) => void;
   onNodeSelect?: (column: string | null) => void;
+  onEditableEdgeSelect?: (selection: EditableEdgeSelection | null) => void;
+  onResultEdgeSelect?: (selection: ResultEdgeSelection | null) => void;
 };
 
 const EDGE_COLORS: Record<EdgeMode, string> = {
@@ -56,6 +75,25 @@ function initialPosition(index: number): { x: number; y: number } {
     x: (index % columnsPerRow) * 245 + 40,
     y: Math.floor(index / columnsPerRow) * 150 + 40,
   };
+}
+
+function makeNodes(
+  columns: string[],
+  parentSet: Set<string>,
+  childSet: Set<string>,
+  positions: Map<string, { x: number; y: number }>,
+  resetLayout: boolean,
+): Node<CausalNodeData>[] {
+  return columns.map((column, index) => ({
+    id: column,
+    type: "causalNode",
+    position: resetLayout ? initialPosition(index) : positions.get(column) ?? initialPosition(index),
+    data: {
+      label: column,
+      forbiddenParent: parentSet.has(column),
+      forbiddenChild: childSet.has(column),
+    },
+  }));
 }
 
 function CausalNode({ data, selected }: NodeProps) {
@@ -82,8 +120,8 @@ function editableEdges(
   causalEdges: EdgeDefinition[],
   requiredEdges: EdgeDefinition[],
   forbiddenEdges: EdgeDefinition[],
-): Edge[] {
-  const convert = (mode: EdgeMode, edge: EdgeDefinition): Edge => ({
+): Edge<CanvasEdgeData>[] {
+  const convert = (mode: EdgeMode, edge: EdgeDefinition): Edge<CanvasEdgeData> => ({
     id: `${mode}|${edge.source}|${edge.target}`,
     source: edge.source,
     target: edge.target,
@@ -95,7 +133,7 @@ function editableEdges(
       strokeDasharray: mode === "forbidden" ? "7 5" : undefined,
     },
     labelStyle: { fill: EDGE_COLORS[mode], fontWeight: 700, fontSize: 10 },
-    data: { mode },
+    data: { type: "editable", mode, edge },
     animated: mode === "required",
   });
   return [
@@ -105,7 +143,7 @@ function editableEdges(
   ];
 }
 
-function discoveryEdges(edges: GraphEdgeResponse[]): Edge<ResultEdgeData>[] {
+function discoveryEdges(edges: GraphEdgeResponse[]): Edge<CanvasEdgeData>[] {
   return edges.map((edge, index) => {
     const directed = edge.kind === "directed";
     const color = directed ? "#2563eb" : "#b54708";
@@ -122,7 +160,7 @@ function discoveryEdges(edges: GraphEdgeResponse[]): Edge<ResultEdgeData>[] {
       },
       labelStyle: { fill: color, fontWeight: 700, fontSize: 10 },
       animated: false,
-      data: { resultEdge: edge },
+      data: { type: "result", resultEdge: edge },
     };
   });
 }
@@ -143,34 +181,48 @@ export default function GraphCanvas({
   onAddResultEdge,
   onRemoveResultEdge,
   onNodeSelect,
+  onEditableEdgeSelect,
+  onResultEdgeSelect,
 }: GraphCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CausalNodeData>>([]);
   const parentSet = useMemo(() => new Set(forbiddenParents), [forbiddenParents]);
   const childSet = useMemo(() => new Set(forbiddenChildren), [forbiddenChildren]);
+  const columnsKey = useMemo(() => columns.join("\u0000"), [columns]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CausalNodeData>>(
+    makeNodes(columns, parentSet, childSet, new Map(), true),
+  );
+  const flowInstance = useRef<
+    ReactFlowInstance<Node<CausalNodeData>, Edge<CanvasEdgeData>> | null
+  >(null);
+  const previousLayoutVersion = useRef(layoutVersion);
   const showsResult = resultEdges !== undefined;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const resetLayout = layoutVersion !== previousLayoutVersion.current;
+    previousLayoutVersion.current = layoutVersion;
     setNodes((current) => {
       const positions = new Map(current.map((node) => [node.id, node.position]));
-      return columns.map((column, index) => ({
-        id: column,
-        type: "causalNode",
-        position: layoutVersion ? initialPosition(index) : positions.get(column) ?? initialPosition(index),
-        data: {
-          label: column,
-          forbiddenParent: parentSet.has(column),
-          forbiddenChild: childSet.has(column),
-        },
-      }));
+      return makeNodes(columns, parentSet, childSet, positions, resetLayout);
     });
   }, [columns, parentSet, childSet, layoutVersion, setNodes]);
 
-  const edges = useMemo(
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void flowInstance.current?.fitView({ padding: 0.2, duration: 180 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [columnsKey, layoutVersion]);
+
+  const edges = useMemo<Edge<CanvasEdgeData>[]>(
     () => showsResult
       ? discoveryEdges(resultEdges ?? [])
       : editableEdges(causalEdges, requiredEdges, forbiddenEdges),
     [showsResult, resultEdges, causalEdges, requiredEdges, forbiddenEdges],
   );
+
+  const clearEdgeSelection = () => {
+    onEditableEdgeSelect?.(null);
+    onResultEdgeSelect?.(null);
+  };
 
   const connect = (connection: Connection) => {
     if (!editable || !connection.source || !connection.target) return;
@@ -181,27 +233,54 @@ export default function GraphCanvas({
 
   return (
     <div className="graph-canvas" data-mode={showsResult ? "result" : mode}>
-      <ReactFlow
+      <ReactFlow<Node<CausalNodeData>, Edge<CanvasEdgeData>>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onInit={(instance) => {
+          flowInstance.current = instance;
+          window.requestAnimationFrame(() => {
+            void instance.fitView({ padding: 0.2 });
+          });
+        }}
         onNodesChange={onNodesChange}
         onConnect={connect}
-        onNodeClick={(_, node) => onNodeSelect?.(node.id)}
-        onPaneClick={() => onNodeSelect?.(null)}
+        onNodeClick={(_, node) => {
+          clearEdgeSelection();
+          onNodeSelect?.(node.id);
+        }}
+        onEdgeClick={(_, edge) => {
+          onNodeSelect?.(null);
+          const edgeData = edge.data;
+          if (edgeData?.type === "result") {
+            onEditableEdgeSelect?.(null);
+            onResultEdgeSelect?.({ edge: edgeData.resultEdge });
+            return;
+          }
+          onResultEdgeSelect?.(null);
+          onEditableEdgeSelect?.(
+            edgeData?.type === "editable"
+              ? { mode: edgeData.mode, edge: edgeData.edge }
+              : null,
+          );
+        }}
+        onPaneClick={() => {
+          onNodeSelect?.(null);
+          clearEdgeSelection();
+        }}
         onEdgesDelete={(deleted) => {
           if (!editable) return;
           for (const edge of deleted) {
-            if (showsResult) {
-              const resultEdge = (edge.data as ResultEdgeData | undefined)?.resultEdge;
-              if (resultEdge) onRemoveResultEdge?.(resultEdge);
+            const edgeData = edge.data;
+            if (edgeData?.type === "result") {
+              onRemoveResultEdge?.(edgeData.resultEdge);
               continue;
             }
-            const [edgeMode, source, target] = edge.id.split("|");
-            if (edgeMode === "causal" || edgeMode === "required" || edgeMode === "forbidden") {
-              onRemoveEdge?.(edgeMode, { source, target });
+            if (edgeData?.type === "editable") {
+              onRemoveEdge?.(edgeData.mode, edgeData.edge);
             }
           }
+          clearEdgeSelection();
         }}
         nodesDraggable={editable}
         nodesConnectable={editable}

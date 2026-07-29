@@ -1,7 +1,7 @@
-import { useState } from "react";
-import GraphCanvas from "../components/GraphCanvas";
+import { useEffect, useState } from "react";
+import GraphCanvas, { type ResultEdgeSelection } from "../components/GraphCanvas";
 import { graphEdgesToMatrix, useWorkbench } from "../context/WorkbenchContext";
-import type { AlgorithmName } from "../types";
+import type { AlgorithmName, GraphEdgeResponse } from "../types";
 
 const ALGORITHMS: Array<{
   id: AlgorithmName;
@@ -17,6 +17,16 @@ const ALGORITHMS: Array<{
 
 function toggle(values: string[], value: string): string[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function unorderedKey(edge: GraphEdgeResponse): string {
+  return [edge.source, edge.target].sort().join("\u0000");
+}
+
+function sameResultEdge(left: GraphEdgeResponse, right: GraphEdgeResponse): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "undirected") return unorderedKey(left) === unorderedKey(right);
+  return left.source === right.source && left.target === right.target;
 }
 
 export default function DiscoveryPage() {
@@ -47,6 +57,7 @@ export default function DiscoveryPage() {
     setStep,
   } = useWorkbench();
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const [selectedEdge, setSelectedEdge] = useState<ResultEdgeSelection | null>(null);
   const categoryEnabled = modelName === "GES" || modelName === "HillClimbSearch";
   const directedCount = editedDiscoveryEdges.filter((edge) => edge.kind === "directed").length;
   const editedMatrix = discovery
@@ -58,6 +69,26 @@ export default function DiscoveryPage() {
     && unresolvedDiscoveryEdges === 0
     && discoveryValidation?.valid !== false,
   );
+
+  useEffect(() => {
+    if (!selectedEdge) return;
+    if (!editedDiscoveryEdges.some((edge) => sameResultEdge(edge, selectedEdge.edge))) {
+      setSelectedEdge(null);
+    }
+  }, [selectedEdge, editedDiscoveryEdges]);
+
+  const deleteSelectedEdge = () => {
+    if (!selectedEdge) return;
+    removeDiscoveryEdge(selectedEdge.edge);
+    setSelectedEdge(null);
+  };
+
+  const setSelectedDirection = (source: string, target: string) => {
+    addDiscoveryEdge({ source, target });
+    setSelectedEdge({
+      edge: { source, target, kind: "directed", weight: 1 },
+    });
+  };
 
   return (
     <>
@@ -173,11 +204,21 @@ export default function DiscoveryPage() {
               <div className="graph-toolbar discovery-editor-toolbar">
                 <div className="mode-guidance causal">
                   <strong>最終因果構造</strong>
-                  <span>未方向辺に矢印を引くと、その方向の有向辺へ置き換わります。</span>
+                  <span>未方向辺に矢印を引くか、エッジ選択後に方向を指定してください。</span>
                 </div>
                 <div className="toolbar-actions">
                   <button type="button" className="secondary" onClick={() => setLayoutVersion((value) => value + 1)}>自動整列</button>
-                  <button type="button" className="secondary" disabled={!discoveryChanged} onClick={resetDiscoveryGraph}>探索結果へ戻す</button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={!discoveryChanged}
+                    onClick={() => {
+                      resetDiscoveryGraph();
+                      setSelectedEdge(null);
+                    }}
+                  >
+                    探索結果へ戻す
+                  </button>
                 </div>
               </div>
               <GraphCanvas
@@ -189,11 +230,59 @@ export default function DiscoveryPage() {
                 layoutVersion={layoutVersion}
                 onAddResultEdge={addDiscoveryEdge}
                 onRemoveResultEdge={removeDiscoveryEdge}
+                onResultEdgeSelect={setSelectedEdge}
               />
+
+              <div className={`edge-action-panel result-edge-action-panel ${selectedEdge ? "active" : ""}`}>
+                {selectedEdge ? (
+                  <>
+                    <div className="selected-edge-definition result">
+                      <small>{selectedEdge.edge.kind === "directed" ? "有向エッジ" : "方向未確定"}</small>
+                      <strong>
+                        <span>{selectedEdge.edge.source}</span>
+                        <b>{selectedEdge.edge.kind === "directed" ? "→" : "—"}</b>
+                        <span>{selectedEdge.edge.target}</span>
+                      </strong>
+                    </div>
+                    <div className="edge-action-grid discovery-edge-actions">
+                      {selectedEdge.edge.kind === "directed" ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setSelectedDirection(selectedEdge.edge.target, selectedEdge.edge.source)}
+                        >
+                          方向を反転
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setSelectedDirection(selectedEdge.edge.source, selectedEdge.edge.target)}
+                          >
+                            {selectedEdge.edge.source} → {selectedEdge.edge.target}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setSelectedDirection(selectedEdge.edge.target, selectedEdge.edge.source)}
+                          >
+                            {selectedEdge.edge.target} → {selectedEdge.edge.source}
+                          </button>
+                        </>
+                      )}
+                      <button type="button" className="secondary danger-text" onClick={deleteSelectedEdge}>このエッジを削除</button>
+                    </div>
+                  </>
+                ) : (
+                  <span className="edge-action-hint">エッジをクリックすると、方向確定・反転・削除を個別に操作できます。</span>
+                )}
+              </div>
+
               <div className="graph-legend discovery-edit-legend">
                 <span className="causal">— 有向辺</span>
                 <span className="undirected">┄ 未方向辺</span>
-                <small>辺を選択してDeleteで削除し、ノード間をドラッグして矢印を追加できます。</small>
+                <small>エッジをクリックして個別操作するか、ノード間をドラッグして矢印を追加できます。</small>
               </div>
               <div className="result-summary-row">
                 <div><small>Directed</small><strong>{directedCount}</strong></div>

@@ -155,6 +155,123 @@
   background: var(--surface-raised);
 }
 
+.edge-settings-panel {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
+}
+
+.selected-edge-definition {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.selected-edge-definition small {
+  color: var(--subtle);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.selected-edge-definition strong {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.selected-edge-definition strong span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-edge-definition strong span:last-child {
+  text-align: right;
+}
+
+.selected-edge-definition strong b {
+  color: var(--primary);
+  font-size: 16px;
+}
+
+.selected-edge-definition.required strong b {
+  color: var(--success);
+}
+
+.selected-edge-definition.forbidden strong b {
+  color: var(--danger);
+}
+
+.selected-edge-definition.result strong b {
+  color: var(--warning);
+}
+
+.edge-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.edge-action-grid button {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 10px;
+}
+
+.edge-action-panel {
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.edge-action-panel.active {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--line));
+}
+
+.result-edge-action-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.result-edge-action-panel:not(.active) {
+  grid-template-columns: 1fr;
+}
+
+.result-edge-action-panel .edge-action-grid {
+  margin-top: 0;
+}
+
+.discovery-edge-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.edge-action-hint {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 800px) {
+  .result-edge-action-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-edge-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 600px) {
   .structure-route-note,
   .selected-structure-summary,
@@ -165,5 +282,9 @@
 
   .editor-status-group {
     flex-wrap: wrap;
+  }
+
+  .edge-action-grid {
+    grid-template-columns: 1fr;
   }
 }
