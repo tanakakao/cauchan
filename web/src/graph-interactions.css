@@ -1,0 +1,45 @@
+/* React Flowの接続点を見やすく、ドラッグしやすくする。 */
+.node-handle {
+  width: 15px !important;
+  height: 15px !important;
+  border: 3px solid var(--surface-raised) !important;
+  background: var(--primary) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--primary) 24%, transparent),
+    0 3px 9px color-mix(in srgb, var(--primary) 24%, transparent);
+  cursor: crosshair;
+  transition:
+    width 120ms ease,
+    height 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease;
+}
+
+/* 見た目以上に掴める範囲を広げる。 */
+.node-handle::after {
+  position: absolute;
+  inset: -6px;
+  content: "";
+}
+
+.node-handle:hover,
+.node-handle.connectingfrom,
+.node-handle.connectingto {
+  width: 18px !important;
+  height: 18px !important;
+  background: var(--primary-hover) !important;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent),
+    0 5px 14px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+@media (pointer: coarse) {
+  .node-handle {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .node-handle::after {
+    inset: -8px;
+  }
+}
