@@ -64,7 +64,7 @@ class DiscoveryResponse(BaseModel):
 
 
 class InferenceRequest(BaseModel):
-    """因果効果推定リクエスト。"""
+    """単一の因果効果推定リクエスト。"""
 
     dataset_id: str
     factor1: str = Field(min_length=1)
@@ -76,7 +76,7 @@ class InferenceRequest(BaseModel):
 
 
 class InferenceResponse(BaseModel):
-    """因果効果推定結果。"""
+    """単一の因果効果推定結果。"""
 
     dataset_id: str
     discovery_id: str | None
@@ -85,6 +85,38 @@ class InferenceResponse(BaseModel):
     method: InferenceMethod
     effect: float
     interpretation: str
+
+
+class BatchInferenceRequest(BaseModel):
+    """最終構造に含まれる全有向エッジの一括推定リクエスト。"""
+
+    dataset_id: str
+    method: InferenceMethod = "SCM"
+    discovery_id: str | None = None
+    columns: list[str] = Field(default_factory=list)
+    causal_matrix: list[list[float]] | None = None
+
+
+class BatchInferenceResult(BaseModel):
+    """一括推定における1エッジ分の結果。"""
+
+    factor1: str
+    factor2: str
+    effect: float | None = None
+    interpretation: str | None = None
+    error: str | None = None
+
+
+class BatchInferenceResponse(BaseModel):
+    """全有向エッジの一括推定結果。"""
+
+    dataset_id: str
+    discovery_id: str | None
+    method: InferenceMethod
+    result_count: int
+    success_count: int
+    failure_count: int
+    results: list[BatchInferenceResult]
 
 
 class GraphValidationRequest(BaseModel):
