@@ -46,6 +46,24 @@ export type InferenceResponse = {
   interpretation: string;
 };
 
+export type BatchInferenceResult = {
+  factor1: string;
+  factor2: string;
+  effect: number | null;
+  interpretation: string | null;
+  error: string | null;
+};
+
+export type BatchInferenceResponse = {
+  dataset_id: string;
+  discovery_id: string | null;
+  method: InferenceMethod;
+  result_count: number;
+  success_count: number;
+  failure_count: number;
+  results: BatchInferenceResult[];
+};
+
 export type GraphValidationResponse = {
   valid: boolean;
   errors: string[];
