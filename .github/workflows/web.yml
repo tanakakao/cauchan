@@ -1,0 +1,43 @@
+name: Web build
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "start_web.bat"
+      - "src/cauchan/api/app.py"
+      - "tests/test_web_port_configuration.py"
+      - ".github/workflows/web.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "start_web.bat"
+      - "src/cauchan/api/app.py"
+      - "tests/test_web_port_configuration.py"
+      - ".github/workflows/web.yml"
+
+jobs:
+  launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows launcher
+        shell: cmd
+        run: call start_web.bat check
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate reserved ports
+        run: python -m unittest discover -s tests -p "test_web_port_configuration.py"
+      - name: Install dependencies
+        working-directory: web
+        run: npm install
+      - name: Build
+        working-directory: web
+        run: npm run build
