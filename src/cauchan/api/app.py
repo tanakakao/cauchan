@@ -31,7 +31,7 @@ def _cors_origins() -> list[str]:
     """環境変数または開発用既定値からCORS許可元を取得する。"""
     value = os.getenv(
         "CAUCHAN_CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:3000",
+        "http://127.0.0.1:5175,http://localhost:5175",
     )
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
