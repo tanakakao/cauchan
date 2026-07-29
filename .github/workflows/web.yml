@@ -18,6 +18,14 @@ on:
       - ".github/workflows/web.yml"
 
 jobs:
+  launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows launcher
+        shell: cmd
+        run: call start_web.bat check
+
   build:
     runs-on: ubuntu-latest
     steps:
