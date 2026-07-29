@@ -7,7 +7,24 @@ FastAPIバックエンドを操作するReact + TypeScriptの因果分析ワー�
 - Node.js 18以上
 - 起動済みのcauchan FastAPI
 
-## 起動
+## Windowsで一括起動
+
+リポジトリ直下の `start_web.bat` を使用すると、FastAPIとReactを別ウィンドウでまとめて起動できます。
+
+```cmd
+start_web.bat
+```
+
+使用ポート:
+
+- FastAPI: `127.0.0.1:8002`
+- React: `127.0.0.1:5175`
+
+bochanの `8000 / 5173`、malchanの `8001 / 5174` と重複しないため、3アプリを同時起動できます。
+
+バッチは起動前に8002と5175が使用中でないか確認します。FastAPIのヘルスチェックが成功した後にReactを起動します。
+
+## 個別に起動
 
 ### FastAPI
 
@@ -15,7 +32,7 @@ FastAPIバックエンドを操作するReact + TypeScriptの因果分析ワー�
 
 ```bash
 python -m pip install -e .
-uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8000
+uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8002
 ```
 
 ### React
@@ -28,18 +45,20 @@ npm install
 npm run dev
 ```
 
-ブラウザで `http://127.0.0.1:5173` を開きます。
+ブラウザで `http://127.0.0.1:5175` を開きます。
 
-既定では `http://127.0.0.1:8000/api/v1` に接続します。接続先を変更する場合は `.env.example` を `.env` にコピーし、`VITE_API_BASE_URL` を変更してください。
+既定では `http://127.0.0.1:8002/api/v1` に接続します。接続先を変更する場合は `.env.example` を `.env` にコピーし、`VITE_API_BASE_URL` を変更してください。
 
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+VITE_API_BASE_URL=http://127.0.0.1:8002/api/v1
 ```
+
+`vite.config.ts` では5175と `strictPort: true` を指定しています。5175が使用中の場合、Viteが別ポートへ自動変更することはありません。
 
 ## npmスクリプト
 
 ```bash
-npm run dev      # Vite開発サーバー
+npm run dev      # Vite開発サーバー（既定ポート5175）
 npm run build    # TypeScriptチェックとプロダクションビルド
 npm run preview  # ビルド成果物の確認
 ```
