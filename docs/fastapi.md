@@ -9,28 +9,55 @@ React Webアプリは探索結果を画面上で編集できるため、次の2�
 
 Webアプリでは、最終因果構造を `columns` と `causal_matrix` に変換して推論APIへ送ります。
 
+## ポート
+
+cauchanはbochan・malchanとの同時起動を前提に、次の固定ポートを使用します。
+
+| サービス | ホスト | ポート |
+|---|---|---:|
+| FastAPI | `127.0.0.1` | 8002 |
+| React | `127.0.0.1` | 5175 |
+
+参考として、bochanは `8000 / 5173`、malchanは `8001 / 5174` を使用します。
+
 ## 起動
+
+### Windows一括起動
+
+リポジトリ直下で実行します。
+
+```cmd
+start_web.bat
+```
+
+バッチはFastAPIを8002で起動し、ヘルスチェック成功後にReactを5175で起動します。
+
+### FastAPIのみ起動
 
 ```bash
 python -m pip install -e .
-uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8000
+uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8002
 ```
 
 起動後は次のURLを利用できます。
 
-- OpenAPI UI: `http://127.0.0.1:8000/docs`
-- ヘルスチェック: `http://127.0.0.1:8000/api/v1/health`
+- OpenAPI UI: `http://127.0.0.1:8002/docs`
+- ヘルスチェック: `http://127.0.0.1:8002/api/v1/health`
 
-Reactの開発サーバーは既定で次のオリジンを許可します。
+## CORS
 
-- `http://localhost:5173`
-- `http://localhost:3000`
+既定ではcauchanのReact開発サーバーだけを許可します。
+
+- `http://127.0.0.1:5175`
+- `http://localhost:5175`
 
 変更する場合は、カンマ区切りで環境変数を設定します。
 
 ```powershell
-$env:CAUCHAN_CORS_ORIGINS="http://localhost:5173,http://localhost:4173"
+$env:CAUCHAN_CORS_ORIGINS="http://127.0.0.1:5175,http://localhost:5175"
 ```
+
+`start_web.bat` は同じ値を自動設定します。
 
 ## エンドポイント
 
@@ -47,8 +74,7 @@ $env:CAUCHAN_CORS_ORIGINS="http://localhost:5173,http://localhost:4173"
 
 ### 1. データセット登録
 
-`POST /api/v1/datasets` にCSVまたはExcelをmultipart形式で送信します。
-レスポンスの `dataset_id` を探索・推論で使用します。
+`POST /api/v1/datasets` にCSVまたはExcelをmultipart形式で送信します。レスポンスの `dataset_id` を探索・推論で使用します。
 
 レスポンスには次が含まれます。
 
@@ -62,8 +88,6 @@ $env:CAUCHAN_CORS_ORIGINS="http://localhost:5173,http://localhost:4173"
 ### 2. グラフと事前知識の検証
 
 `POST /api/v1/graphs/validate`
-
-React上で矢印やノード制約を編集した際に使用します。
 
 ```json
 {
@@ -137,13 +161,7 @@ Webアプリ側では、APIの検証結果に加えて次も確認します。
 - `GES`
 - `HillClimbSearch`
 
-探索結果には次が含まれます。
-
-- `discovery_id`
-- 使用バックエンド
-- 列順
-- 隣接行列
-- React Flow向けの辺情報
+探索結果には `discovery_id`、バックエンド、列順、隣接行列、React Flow向けの辺情報が含まれます。
 
 有向辺:
 
@@ -167,7 +185,7 @@ PC法で方向が確定しない辺:
 }
 ```
 
-未方向辺は因果効果推定にそのまま使用すべきではありません。Webアプリでは、削除するか方向を確定するまで推論を無効にします。
+未方向辺は因果効果推定にそのまま使用せず、Webアプリで削除するか方向を確定します。
 
 ### 4. 因果効果推定
 
@@ -189,7 +207,7 @@ APIとしては `discovery_id` を指定できます。
 }
 ```
 
-ただし、PC法の探索結果に未方向辺がある場合、代表DAGへの変換が必要になります。方向の科学的解釈が重要な用途では、探索結果を編集して最終DAGを明示する方法を推奨します。
+ただしPC法の探索結果に未方向辺がある場合、方向の科学的解釈が曖昧になります。Webアプリでは探索結果を編集して最終DAGを明示する方法を採用します。
 
 #### 手動構造または編集後の探索構造を使用する場合
 
@@ -221,7 +239,7 @@ causal_matrix[i][j] != 0
     => columns[i] -> columns[j]
 ```
 
-Webアプリでは、手動構造と探索後編集構造のどちらも、この形式で送信します。これにより、画面上で追加・削除・方向変更した内容が推論へ直接反映されます。
+Webアプリでは、手動構造と探索後編集構造のどちらもこの形式で送信します。これにより、画面上で追加・削除・方向変更した内容が推論へ直接反映されます。
 
 推論前にバックエンドで次を確認します。
 
@@ -243,7 +261,7 @@ React Webアプリは別途、次の状態をブラウザ内で保持します�
 - 生の探索結果
 - 編集後の探索構造
 
-編集後の探索構造はFastAPIの探索結果レコードを書き換えません。推論時に最終行列として送信します。
+編集後の探索構造はFastAPIの探索結果レコードを書き換えず、推論時に最終行列として送信します。
 
 ## 保存方式
 
