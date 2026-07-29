@@ -1,5 +1,6 @@
+import { useState } from "react";
 import GraphCanvas from "../components/GraphCanvas";
-import { useWorkbench } from "../context/WorkbenchContext";
+import { graphEdgesToMatrix, useWorkbench } from "../context/WorkbenchContext";
 import type { AlgorithmName } from "../types";
 
 const ALGORITHMS: Array<{
@@ -22,6 +23,7 @@ export default function DiscoveryPage() {
   const {
     dataset,
     selectedColumns,
+    structureSource,
     modelName,
     setModelName,
     scale,
@@ -34,22 +36,56 @@ export default function DiscoveryPage() {
     requiredEdges,
     validation,
     discovery,
+    editedDiscoveryEdges,
+    discoveryValidation,
+    discoveryChanged,
+    unresolvedDiscoveryEdges,
+    addDiscoveryEdge,
+    removeDiscoveryEdge,
+    resetDiscoveryGraph,
     runDiscovery,
+    setStep,
   } = useWorkbench();
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const categoryEnabled = modelName === "GES" || modelName === "HillClimbSearch";
+  const directedCount = editedDiscoveryEdges.filter((edge) => edge.kind === "directed").length;
+  const editedMatrix = discovery
+    ? graphEdgesToMatrix(discovery.columns, editedDiscoveryEdges)
+    : [];
+  const canAdopt = Boolean(
+    discovery
+    && directedCount > 0
+    && unresolvedDiscoveryEdges === 0
+    && discoveryValidation?.valid !== false,
+  );
 
   return (
     <>
       <header className="section-header">
         <div>
           <span className="eyebrow">STEP 03 · DISCOVERY</span>
-          <h2>因果構造を探索</h2>
-          <p>アルゴリズムと事前知識を指定し、データから因果構造候補を推定します。</p>
+          <h2>因果探索と最終構造の編集</h2>
+          <p>探索結果を初期案として表示し、不要な辺の削除、方向変更、辺の追加を行って最終構造を確定します。</p>
         </div>
-        <span className={`status-chip ${discovery ? "success" : ""}`}>
-          {discovery ? `${discovery.model_name} 完了` : "未実行"}
+        <span className={`status-chip ${discoveryValidation?.valid ? "success" : discovery ? "warning" : ""}`}>
+          {!discovery
+            ? "未実行"
+            : discoveryValidation?.valid
+              ? "最終構造OK"
+              : `${unresolvedDiscoveryEdges}件未確定`}
         </span>
       </header>
+
+      {structureSource !== "discovery" && (
+        <section className="panel structure-route-note">
+          <div>
+            <span className="eyebrow">MANUAL STRUCTURE SELECTED</span>
+            <h3>現在は手動構造を使用する設定です</h3>
+            <p>因果探索を利用する場合は、Knowledge画面で構造の決定方法を切り替えてください。</p>
+          </div>
+          <button type="button" onClick={() => setStep("knowledge")}>Knowledgeへ戻る</button>
+        </section>
+      )}
 
       <div className="discovery-layout">
         <section className="panel discovery-settings">
@@ -61,6 +97,7 @@ export default function DiscoveryPage() {
                 type="button"
                 className={`algorithm-card ${modelName === algorithm.id ? "active" : ""}`}
                 onClick={() => setModelName(algorithm.id)}
+                disabled={structureSource !== "discovery"}
               >
                 <span>{algorithm.backend}</span>
                 <strong>{algorithm.label}</strong>
@@ -72,7 +109,12 @@ export default function DiscoveryPage() {
           <div className="settings-block">
             <div className="settings-title"><span>PREPROCESSING</span><strong>前処理</strong></div>
             <label className="setting-check horizontal">
-              <input type="checkbox" checked={scale} onChange={(event) => setScale(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={scale}
+                onChange={(event) => setScale(event.target.checked)}
+                disabled={structureSource !== "discovery"}
+              />
               <span><strong>数値変数を標準化</strong><small>探索前にStandardScalerを適用します。</small></span>
             </label>
           </div>
@@ -87,6 +129,7 @@ export default function DiscoveryPage() {
                       type="checkbox"
                       checked={categoricalColumns.includes(column)}
                       onChange={() => setCategoricalColumns((current) => toggle(current, column))}
+                      disabled={structureSource !== "discovery"}
                     />
                     <span>{column}</span>
                   </label>
@@ -107,10 +150,10 @@ export default function DiscoveryPage() {
           <button
             type="button"
             className="primary-action"
-            disabled={selectedColumns.length < 2 || validation?.valid === false}
+            disabled={structureSource !== "discovery" || selectedColumns.length < 2 || validation?.valid === false}
             onClick={() => void runDiscovery()}
           >
-            因果構造を探索
+            {discovery ? "条件を反映して再探索" : "因果構造を探索"}
           </button>
           {validation?.valid === false && (
             <p className="inline-warning">Knowledge画面の矛盾を解消してから実行してください。</p>
@@ -118,29 +161,80 @@ export default function DiscoveryPage() {
         </section>
 
         <section className="panel discovery-result-panel">
-          <div className="panel-title">
-            <div><span>DISCOVERY RESULT</span><h3>探索結果</h3></div>
-            {discovery && <span className="status-chip success">{discovery.backend}</span>}
+          <div className="panel-title discovery-editor-title">
+            <div><span>FINAL GRAPH EDITOR</span><h3>探索結果を編集</h3></div>
+            <div className="editor-status-group">
+              {discoveryChanged && <span className="status-chip warning">編集済み</span>}
+              {discovery && <span className="status-chip success">{discovery.backend}</span>}
+            </div>
           </div>
           {discovery ? (
             <>
+              <div className="graph-toolbar discovery-editor-toolbar">
+                <div className="mode-guidance causal">
+                  <strong>最終因果構造</strong>
+                  <span>未方向辺に矢印を引くと、その方向の有向辺へ置き換わります。</span>
+                </div>
+                <div className="toolbar-actions">
+                  <button type="button" className="secondary" onClick={() => setLayoutVersion((value) => value + 1)}>自動整列</button>
+                  <button type="button" className="secondary" disabled={!discoveryChanged} onClick={resetDiscoveryGraph}>探索結果へ戻す</button>
+                </div>
+              </div>
               <GraphCanvas
                 columns={discovery.columns}
-                resultEdges={discovery.edges}
-                editable={false}
+                resultEdges={editedDiscoveryEdges}
+                forbiddenParents={forbiddenParents}
+                forbiddenChildren={forbiddenChildren}
+                editable
+                layoutVersion={layoutVersion}
+                onAddResultEdge={addDiscoveryEdge}
+                onRemoveResultEdge={removeDiscoveryEdge}
               />
-              <div className="result-summary-row">
-                <div><small>Directed</small><strong>{discovery.edges.filter((edge) => edge.kind === "directed").length}</strong></div>
-                <div><small>Undirected</small><strong>{discovery.edges.filter((edge) => edge.kind === "undirected").length}</strong></div>
-                <div><small>Discovery ID</small><strong title={discovery.discovery_id}>{discovery.discovery_id.slice(0, 8)}</strong></div>
+              <div className="graph-legend discovery-edit-legend">
+                <span className="causal">— 有向辺</span>
+                <span className="undirected">┄ 未方向辺</span>
+                <small>辺を選択してDeleteで削除し、ノード間をドラッグして矢印を追加できます。</small>
               </div>
+              <div className="result-summary-row">
+                <div><small>Directed</small><strong>{directedCount}</strong></div>
+                <div><small>Undirected</small><strong>{unresolvedDiscoveryEdges}</strong></div>
+                <div><small>State</small><strong>{discoveryChanged ? "Edited" : "Original"}</strong></div>
+              </div>
+
+              <section className={`embedded-validation ${discoveryValidation?.valid ? "valid" : "invalid"}`}>
+                <div>
+                  <span>FINAL GRAPH VALIDATION</span>
+                  <strong>{discoveryValidation?.valid ? "推論に使用できます" : "構造の修正が必要です"}</strong>
+                </div>
+                {!discoveryValidation && <p>FastAPIで確認しています...</p>}
+                {!!discoveryValidation?.errors.length && (
+                  <ul className="validation-list error-list">
+                    {discoveryValidation.errors.map((message) => <li key={message}>{message}</li>)}
+                  </ul>
+                )}
+                {!!discoveryValidation?.warnings.length && (
+                  <ul className="validation-list warning-list">
+                    {discoveryValidation.warnings.map((message) => <li key={message}>{message}</li>)}
+                  </ul>
+                )}
+              </section>
+
+              <button
+                type="button"
+                className="primary-action adopt-graph-action"
+                disabled={!canAdopt}
+                onClick={() => setStep("inference")}
+              >
+                この最終構造を採用して推論へ
+              </button>
+
               <details className="matrix-details">
-                <summary>隣接行列を確認</summary>
+                <summary>編集後の隣接行列を確認</summary>
                 <div className="matrix-wrap">
                   <table className="matrix-table">
                     <thead><tr><th>from \ to</th>{discovery.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
                     <tbody>
-                      {discovery.causal_matrix.map((row, rowIndex) => (
+                      {editedMatrix.map((row, rowIndex) => (
                         <tr key={discovery.columns[rowIndex]}>
                           <th>{discovery.columns[rowIndex]}</th>
                           {row.map((value, columnIndex) => <td key={`${rowIndex}-${columnIndex}`}>{Number(value).toPrecision(3)}</td>)}
@@ -155,7 +249,7 @@ export default function DiscoveryPage() {
             <div className="result-empty">
               <div>◎</div>
               <strong>探索結果はまだありません</strong>
-              <p>左側でアルゴリズムを選び、因果構造を探索してください。</p>
+              <p>左側でアルゴリズムを選び、因果構造を探索してください。結果はこの画面で編集できます。</p>
             </div>
           )}
         </section>
