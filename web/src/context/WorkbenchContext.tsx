@@ -16,11 +16,13 @@ import type {
   DiscoveryResponse,
   EdgeDefinition,
   EdgeMode,
+  GraphEdgeResponse,
   GraphValidationResponse,
   HealthState,
   InferenceMethod,
   InferenceResponse,
   InferenceSource,
+  StructureSource,
   Theme,
   WorkbenchStep,
 } from "../types";
@@ -28,12 +30,22 @@ import type {
 export const STEPS: Array<[WorkbenchStep, string, string]> = [
   ["data", "Data", "読込・確認"],
   ["knowledge", "Knowledge", "構造・制約"],
-  ["discovery", "Discovery", "探索・確認"],
+  ["discovery", "Discovery", "探索・編集"],
   ["inference", "Inference", "効果推定"],
 ];
 
 function edgeKey(edge: EdgeDefinition): string {
   return `${edge.source}\u0000${edge.target}`;
+}
+
+function unorderedEdgeKey(edge: EdgeDefinition): string {
+  return [edge.source, edge.target].sort().join("\u0000");
+}
+
+function graphEdgeKey(edge: GraphEdgeResponse): string {
+  return edge.kind === "undirected"
+    ? `${edge.kind}\u0000${unorderedEdgeKey(edge)}`
+    : `${edge.kind}\u0000${edgeKey(edge)}`;
 }
 
 function uniqueEdges(edges: EdgeDefinition[]): EdgeDefinition[] {
@@ -46,6 +58,24 @@ function uniqueEdges(edges: EdgeDefinition[]): EdgeDefinition[] {
   });
 }
 
+function uniqueGraphEdges(edges: GraphEdgeResponse[]): GraphEdgeResponse[] {
+  const seen = new Set<string>();
+  return edges.filter((edge) => {
+    const key = graphEdgeKey(edge);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function samePair(left: EdgeDefinition, right: EdgeDefinition): boolean {
+  return unorderedEdgeKey(left) === unorderedEdgeKey(right);
+}
+
+function copyGraphEdges(edges: GraphEdgeResponse[]): GraphEdgeResponse[] {
+  return edges.map((edge) => ({ ...edge }));
+}
+
 export function edgesToMatrix(columns: string[], edges: EdgeDefinition[]): number[][] {
   const index = new Map(columns.map((column, position) => [column, position]));
   const matrix = columns.map(() => columns.map(() => 0));
@@ -53,6 +83,23 @@ export function edgesToMatrix(columns: string[], edges: EdgeDefinition[]): numbe
     const source = index.get(edge.source);
     const target = index.get(edge.target);
     if (source !== undefined && target !== undefined) matrix[source][target] = 1;
+  }
+  return matrix;
+}
+
+export function graphEdgesToMatrix(columns: string[], edges: GraphEdgeResponse[]): number[][] {
+  const directed = edges
+    .filter((edge) => edge.kind === "directed")
+    .map(({ source, target }) => ({ source, target }));
+  const matrix = edgesToMatrix(columns, directed);
+  const index = new Map(columns.map((column, position) => [column, position]));
+  for (const edge of edges.filter((item) => item.kind === "undirected")) {
+    const source = index.get(edge.source);
+    const target = index.get(edge.target);
+    if (source !== undefined && target !== undefined) {
+      matrix[source][target] = 1;
+      matrix[target][source] = 1;
+    }
   }
   return matrix;
 }
@@ -75,6 +122,8 @@ type WorkbenchValue = {
   setModelName: Dispatch<SetStateAction<AlgorithmName>>;
   scale: boolean;
   setScale: Dispatch<SetStateAction<boolean>>;
+  structureSource: StructureSource;
+  setStructureSource: Dispatch<SetStateAction<StructureSource>>;
   edgeMode: EdgeMode;
   setEdgeMode: Dispatch<SetStateAction<EdgeMode>>;
   causalEdges: EdgeDefinition[];
@@ -89,6 +138,13 @@ type WorkbenchValue = {
   clearEdges: () => void;
   validation: GraphValidationResponse | null;
   discovery: DiscoveryResponse | null;
+  editedDiscoveryEdges: GraphEdgeResponse[];
+  discoveryValidation: GraphValidationResponse | null;
+  discoveryChanged: boolean;
+  unresolvedDiscoveryEdges: number;
+  addDiscoveryEdge: (edge: EdgeDefinition) => void;
+  removeDiscoveryEdge: (edge: GraphEdgeResponse) => void;
+  resetDiscoveryGraph: () => void;
   inference: InferenceResponse | null;
   uploadDataset: (file: File) => Promise<void>;
   runDiscovery: () => Promise<void>;
@@ -117,6 +173,7 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
   const [categoricalColumns, setCategoricalColumns] = useState<string[]>([]);
   const [modelName, setModelName] = useState<AlgorithmName>("PC");
   const [scale, setScale] = useState(true);
+  const [structureSource, setStructureSource] = useState<StructureSource>("manual");
   const [edgeMode, setEdgeMode] = useState<EdgeMode>("causal");
   const [causalEdges, setCausalEdges] = useState<EdgeDefinition[]>([]);
   const [requiredEdges, setRequiredEdges] = useState<EdgeDefinition[]>([]);
@@ -125,12 +182,29 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
   const [forbiddenChildren, setForbiddenChildren] = useState<string[]>([]);
   const [validation, setValidation] = useState<GraphValidationResponse | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null);
+  const [editedDiscoveryEdges, setEditedDiscoveryEdges] = useState<GraphEdgeResponse[]>([]);
+  const [discoveryValidation, setDiscoveryValidation] = useState<GraphValidationResponse | null>(null);
   const [inference, setInference] = useState<InferenceResponse | null>(null);
+
+  const unresolvedDiscoveryEdges = editedDiscoveryEdges.filter(
+    (edge) => edge.kind === "undirected",
+  ).length;
+
+  const discoveryChanged = useMemo(() => {
+    if (!discovery) return false;
+    const original = discovery.edges.map(graphEdgeKey).sort();
+    const edited = editedDiscoveryEdges.map(graphEdgeKey).sort();
+    return original.length !== edited.length || original.some((key, index) => key !== edited[index]);
+  }, [discovery, editedDiscoveryEdges]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("cauchan-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    setInference(null);
+  }, [structureSource]);
 
   useEffect(() => {
     let active = true;
@@ -162,6 +236,8 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     setForbiddenChildren((current) => current.filter((node) => selected.has(node)));
     setCategoricalColumns((current) => current.filter((node) => selected.has(node)));
     setDiscovery(null);
+    setEditedDiscoveryEdges([]);
+    setDiscoveryValidation(null);
     setInference(null);
   }, [selectedColumns]);
 
@@ -175,7 +251,7 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
       try {
         const result = await api.validateGraph({
           columns: selectedColumns,
-          causal_edges: causalEdges,
+          causal_edges: structureSource === "manual" ? causalEdges : [],
           required_edges: requiredEdges,
           forbidden_edges: forbiddenEdges,
           forbidden_parents: forbiddenParents,
@@ -198,7 +274,76 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     };
   }, [
     selectedColumns,
+    structureSource,
     causalEdges,
+    requiredEdges,
+    forbiddenEdges,
+    forbiddenParents,
+    forbiddenChildren,
+  ]);
+
+  useEffect(() => {
+    if (!discovery) {
+      setDiscoveryValidation(null);
+      return undefined;
+    }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      const directedEdges = editedDiscoveryEdges
+        .filter((edge) => edge.kind === "directed")
+        .map(({ source, target }) => ({ source, target }));
+      try {
+        const result = await api.validateGraph({
+          columns: discovery.columns,
+          causal_edges: directedEdges,
+          required_edges: requiredEdges,
+          forbidden_edges: forbiddenEdges,
+          forbidden_parents: forbiddenParents,
+          forbidden_children: forbiddenChildren,
+        });
+        const errors = [...result.errors];
+        const warnings = [...result.warnings];
+        const undirectedCount = editedDiscoveryEdges.filter(
+          (edge) => edge.kind === "undirected",
+        ).length;
+        if (undirectedCount) {
+          errors.push(
+            `方向未確定のエッジが${undirectedCount}件あります。削除するか矢印を引いて方向を確定してください。`,
+          );
+        }
+        const directedKeys = new Set(directedEdges.map(edgeKey));
+        const missingRequired = requiredEdges.filter((edge) => !directedKeys.has(edgeKey(edge)));
+        if (missingRequired.length) {
+          errors.push(
+            `必須エッジが最終構造にありません: ${missingRequired
+              .map((edge) => `${edge.source} -> ${edge.target}`)
+              .join(", ")}`,
+          );
+        }
+        if (active) {
+          setDiscoveryValidation({
+            valid: errors.length === 0,
+            errors,
+            warnings,
+          });
+        }
+      } catch (requestError) {
+        if (active) {
+          setDiscoveryValidation({
+            valid: false,
+            errors: [requestError instanceof Error ? requestError.message : String(requestError)],
+            warnings: [],
+          });
+        }
+      }
+    }, 300);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    discovery,
+    editedDiscoveryEdges,
     requiredEdges,
     forbiddenEdges,
     forbiddenParents,
@@ -213,12 +358,16 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
       setDataset(result);
       setSelectedColumns(result.columns);
       setCategoricalColumns([]);
+      setStructureSource("manual");
+      setEdgeMode("causal");
       setCausalEdges([]);
       setRequiredEdges([]);
       setForbiddenEdges([]);
       setForbiddenParents([]);
       setForbiddenChildren([]);
       setDiscovery(null);
+      setEditedDiscoveryEdges([]);
+      setDiscoveryValidation(null);
       setInference(null);
       setStep("knowledge");
     } catch (requestError) {
@@ -236,7 +385,6 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
         ? setRequiredEdges
         : setForbiddenEdges;
     setter((current) => uniqueEdges([...current, edge]));
-    setDiscovery(null);
     setInference(null);
   }, []);
 
@@ -248,7 +396,6 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
         : setForbiddenEdges;
     const key = edgeKey(edge);
     setter((current) => current.filter((item) => edgeKey(item) !== key));
-    setDiscovery(null);
     setInference(null);
   }, []);
 
@@ -256,12 +403,35 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     setCausalEdges([]);
     setRequiredEdges([]);
     setForbiddenEdges([]);
-    setDiscovery(null);
     setInference(null);
   }, []);
 
+  const addDiscoveryEdge = useCallback((edge: EdgeDefinition) => {
+    if (edge.source === edge.target) return;
+    setEditedDiscoveryEdges((current) => uniqueGraphEdges([
+      ...current.filter((item) => !samePair(item, edge)),
+      { ...edge, kind: "directed", weight: 1 },
+    ]));
+    setInference(null);
+  }, []);
+
+  const removeDiscoveryEdge = useCallback((edge: GraphEdgeResponse) => {
+    const key = graphEdgeKey(edge);
+    setEditedDiscoveryEdges((current) => current.filter((item) => graphEdgeKey(item) !== key));
+    setInference(null);
+  }, []);
+
+  const resetDiscoveryGraph = useCallback(() => {
+    setEditedDiscoveryEdges(discovery ? copyGraphEdges(discovery.edges) : []);
+    setInference(null);
+  }, [discovery]);
+
   const runDiscovery = useCallback(async () => {
     if (!dataset) return;
+    if (structureSource !== "discovery") {
+      setError("因果構造の決定方法を「因果探索」に切り替えてください。");
+      return;
+    }
     if (selectedColumns.length < 2) {
       setError("因果探索には2列以上を選択してください。");
       return;
@@ -285,8 +455,10 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
         required_edges: requiredEdges,
       });
       setDiscovery(result);
+      setEditedDiscoveryEdges(copyGraphEdges(result.edges));
+      setStructureSource("discovery");
       setInference(null);
-      setStep("inference");
+      setStep("discovery");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));
     } finally {
@@ -294,6 +466,7 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     }
   }, [
     dataset,
+    structureSource,
     selectedColumns,
     validation,
     modelName,
@@ -312,40 +485,80 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     source: InferenceSource,
   ) => {
     if (!dataset) return;
+
+    const columns = source === "discovery" ? discovery?.columns ?? [] : selectedColumns;
+    const graphEdges = source === "discovery"
+      ? editedDiscoveryEdges
+          .filter((edge) => edge.kind === "directed")
+          .map(({ source: edgeSource, target }) => ({ source: edgeSource, target }))
+      : causalEdges;
+    const sourceValidation = source === "discovery" ? discoveryValidation : validation;
+
+    if (!columns.length || !graphEdges.length) {
+      setError("推論に使用できる因果構造がありません。");
+      return;
+    }
+    if (source === "discovery" && unresolvedDiscoveryEdges > 0) {
+      setError("探索結果の未方向エッジをすべて確定してから推論してください。");
+      return;
+    }
+    if (sourceValidation?.valid === false) {
+      setError("最終因果構造に矛盾があります。グラフを修正してください。");
+      return;
+    }
+
     setBusy("因果効果を推定しています");
     setError(null);
     try {
-      const payload = source === "discovery"
-        ? {
-            dataset_id: dataset.dataset_id,
-            factor1,
-            factor2,
-            method,
-            discovery_id: discovery?.discovery_id,
-          }
-        : {
-            dataset_id: dataset.dataset_id,
-            factor1,
-            factor2,
-            method,
-            columns: selectedColumns,
-            causal_matrix: edgesToMatrix(selectedColumns, causalEdges),
-          };
-      const result = await api.infer(payload);
+      const result = await api.infer({
+        dataset_id: dataset.dataset_id,
+        factor1,
+        factor2,
+        method,
+        columns,
+        causal_matrix: edgesToMatrix(columns, graphEdges),
+      });
       setInference(result);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));
     } finally {
       setBusy(null);
     }
-  }, [dataset, discovery, selectedColumns, causalEdges]);
+  }, [
+    dataset,
+    discovery,
+    selectedColumns,
+    editedDiscoveryEdges,
+    causalEdges,
+    discoveryValidation,
+    validation,
+    unresolvedDiscoveryEdges,
+  ]);
 
   const canOpenStep = useCallback((target: WorkbenchStep) => {
     if (target === "data") return true;
     if (!dataset) return false;
-    if (target === "knowledge" || target === "discovery") return true;
-    return Boolean(discovery || causalEdges.length);
-  }, [dataset, discovery, causalEdges.length]);
+    if (target === "knowledge") return true;
+    if (target === "discovery") return structureSource === "discovery";
+    if (structureSource === "manual") {
+      return causalEdges.length > 0 && validation?.valid !== false;
+    }
+    return Boolean(
+      discovery
+      && editedDiscoveryEdges.some((edge) => edge.kind === "directed")
+      && unresolvedDiscoveryEdges === 0
+      && discoveryValidation?.valid !== false,
+    );
+  }, [
+    dataset,
+    structureSource,
+    causalEdges.length,
+    validation,
+    discovery,
+    editedDiscoveryEdges,
+    unresolvedDiscoveryEdges,
+    discoveryValidation,
+  ]);
 
   const value = useMemo<WorkbenchValue>(() => ({
     theme,
@@ -365,6 +578,8 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     setModelName,
     scale,
     setScale,
+    structureSource,
+    setStructureSource,
     edgeMode,
     setEdgeMode,
     causalEdges,
@@ -379,6 +594,13 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     clearEdges,
     validation,
     discovery,
+    editedDiscoveryEdges,
+    discoveryValidation,
+    discoveryChanged,
+    unresolvedDiscoveryEdges,
+    addDiscoveryEdge,
+    removeDiscoveryEdge,
+    resetDiscoveryGraph,
     inference,
     uploadDataset,
     runDiscovery,
@@ -395,6 +617,7 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     categoricalColumns,
     modelName,
     scale,
+    structureSource,
     edgeMode,
     causalEdges,
     requiredEdges,
@@ -406,6 +629,13 @@ export function WorkbenchProvider({ children }: PropsWithChildren) {
     clearEdges,
     validation,
     discovery,
+    editedDiscoveryEdges,
+    discoveryValidation,
+    discoveryChanged,
+    unresolvedDiscoveryEdges,
+    addDiscoveryEdge,
+    removeDiscoveryEdge,
+    resetDiscoveryGraph,
     inference,
     uploadDataset,
     runDiscovery,
