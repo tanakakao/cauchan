@@ -4,7 +4,8 @@ export type HealthStatus = "checking" | "ok" | "error";
 export type AlgorithmName = "PC" | "DirectLiNGAM" | "GES" | "HillClimbSearch";
 export type InferenceMethod = "SCM" | "LinearDML";
 export type EdgeMode = "causal" | "required" | "forbidden";
-export type InferenceSource = "discovery" | "manual";
+export type StructureSource = "manual" | "discovery";
+export type InferenceSource = StructureSource;
 
 export type EdgeDefinition = {
   source: string;
