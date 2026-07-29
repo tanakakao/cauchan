@@ -13,14 +13,32 @@ Data
 
 ## 起動
 
-### FastAPI
+### Windows一括起動
+
+リポジトリ直下の `start_web.bat` を実行します。
+
+```cmd
+start_web.bat
+```
+
+バッチはcauchan専用ポートの空き状況を確認し、FastAPIの準備完了後にReactを起動します。
+
+- FastAPI: `http://127.0.0.1:8002`
+- React: `http://127.0.0.1:5175`
+- OpenAPI: `http://127.0.0.1:8002/docs`
+
+bochanは `8000 / 5173`、malchanは `8001 / 5174` を使用するため、3アプリを同時に起動できます。
+
+### 個別起動
+
+FastAPI:
 
 ```bash
 python -m pip install -e .
-uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8000
+uvicorn cauchan.api.app:app --reload --host 127.0.0.1 --port 8002
 ```
 
-### React
+React:
 
 ```bash
 cd web
@@ -28,7 +46,7 @@ npm install
 npm run dev
 ```
 
-ブラウザで `http://127.0.0.1:5173` を開きます。
+ブラウザで `http://127.0.0.1:5175` を開きます。
 
 ## 画面構成
 
