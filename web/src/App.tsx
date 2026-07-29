@@ -32,15 +32,21 @@ function WorkbenchLayout() {
     setError,
     dataset,
     selectedColumns,
+    structureSource,
     causalEdges,
     requiredEdges,
     forbiddenEdges,
     discovery,
+    editedDiscoveryEdges,
+    unresolvedDiscoveryEdges,
     inference,
     canOpenStep,
   } = useWorkbench();
   const index = STEPS.findIndex(([id]) => id === step);
   const Page = PAGES[step];
+  const finalEdgeCount = structureSource === "manual"
+    ? causalEdges.length
+    : editedDiscoveryEdges.filter((edge) => edge.kind === "directed").length;
 
   return (
     <div className="app-root">
@@ -57,7 +63,7 @@ function WorkbenchLayout() {
           {STEPS.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
-                className={`workflow-step ${id === step ? "active" : ""} ${stepIndex < index ? "complete" : ""}`}
+                className={`workflow-step ${id === step ? "active" : ""} ${stepIndex < index && canOpenStep(id) ? "complete" : ""}`}
                 onClick={() => setStep(id)}
                 disabled={!canOpenStep(id)}
                 aria-current={id === step ? "step" : undefined}
@@ -93,7 +99,7 @@ function WorkbenchLayout() {
             {STEPS.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
-                className={`tab ${step === id ? "active" : ""} ${stepIndex < index ? "complete" : ""}`}
+                className={`tab ${step === id ? "active" : ""} ${stepIndex < index && canOpenStep(id) ? "complete" : ""}`}
                 onClick={() => setStep(id)}
                 disabled={!canOpenStep(id)}
                 aria-current={step === id ? "page" : undefined}
@@ -107,7 +113,7 @@ function WorkbenchLayout() {
           <div className="rail-spacer" />
           <div className="rail-note">
             <div className="shield-icon">β</div>
-            <div><strong>React + FastAPI</strong><p>事前知識の編集から因果効果推定までを一つのワークスペースで扱います。</p></div>
+            <div><strong>React + FastAPI</strong><p>手動構造または探索後に編集した構造から因果効果を推定します。</p></div>
           </div>
         </aside>
 
@@ -132,17 +138,24 @@ function WorkbenchLayout() {
             </div>
           </div>
           <div className="side-card">
-            <div className="side-card-title"><span>KNOWLEDGE</span><strong>事前知識</strong></div>
+            <div className="side-card-title"><span>FINAL STRUCTURE</span><strong>採用する因果構造</strong></div>
             <div className="context-list">
-              <div><span>Manual</span><strong>{causalEdges.length}</strong></div>
-              <div><span>Required</span><strong>{requiredEdges.length}</strong></div>
-              <div><span>Forbidden</span><strong>{forbiddenEdges.length}</strong></div>
+              <div><span>Source</span><strong>{structureSource === "manual" ? "Manual" : "Discovery + Edit"}</strong></div>
+              <div><span>Directed</span><strong>{finalEdgeCount}</strong></div>
+              <div><span>Undirected</span><strong>{structureSource === "discovery" ? unresolvedDiscoveryEdges : 0}</strong></div>
             </div>
           </div>
           <div className="side-card">
-            <div className="side-card-title"><span>RESULT</span><strong>計算状態</strong></div>
+            <div className="side-card-title"><span>KNOWLEDGE</span><strong>探索制約</strong></div>
             <div className="context-list">
+              <div><span>Required</span><strong>{requiredEdges.length}</strong></div>
+              <div><span>Forbidden</span><strong>{forbiddenEdges.length}</strong></div>
               <div><span>Discovery</span><strong>{discovery?.model_name || "—"}</strong></div>
+            </div>
+          </div>
+          <div className="side-card">
+            <div className="side-card-title"><span>RESULT</span><strong>因果効果</strong></div>
+            <div className="context-list">
               <div><span>Inference</span><strong>{inference ? Number(inference.effect).toPrecision(5) : "—"}</strong></div>
             </div>
           </div>
@@ -152,7 +165,7 @@ function WorkbenchLayout() {
       <footer className="statusbar">
         <span><span className={`dot ${health.status}`} /> API {health.status}</span>
         <span>{dataset ? `${dataset.row_count.toLocaleString()} rows` : "No data"}</span>
-        <span className="privacy-status">cauchan web 0.1.0</span>
+        <span className="privacy-status">cauchan web 0.2.0</span>
       </footer>
 
       {busy && (
