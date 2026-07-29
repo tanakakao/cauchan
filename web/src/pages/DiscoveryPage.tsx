@@ -98,11 +98,23 @@ export default function DiscoveryPage() {
           <h2>因果探索と最終構造の編集</h2>
           <p>探索結果を初期案として表示し、不要な辺の削除、方向変更、辺の追加を行って最終構造を確定します。</p>
         </div>
-        <span className={`status-chip ${discoveryValidation?.valid ? "success" : discovery ? "warning" : ""}`}>
+        <span
+          className={`status-chip ${
+            discoveryValidation?.valid
+              ? discoveryValidation.warnings.length
+                ? "warning"
+                : "success"
+              : discovery
+                ? "warning"
+                : ""
+          }`}
+        >
           {!discovery
             ? "未実行"
             : discoveryValidation?.valid
-              ? "最終構造OK"
+              ? discoveryValidation.warnings.length
+                ? "注意あり・推論可能"
+                : "最終構造OK"
               : `${unresolvedDiscoveryEdges}件未確定`}
         </span>
       </header>
@@ -293,7 +305,13 @@ export default function DiscoveryPage() {
               <section className={`embedded-validation ${discoveryValidation?.valid ? "valid" : "invalid"}`}>
                 <div>
                   <span>FINAL GRAPH VALIDATION</span>
-                  <strong>{discoveryValidation?.valid ? "推論に使用できます" : "構造の修正が必要です"}</strong>
+                  <strong>
+                    {discoveryValidation?.valid
+                      ? discoveryValidation.warnings.length
+                        ? "注意事項がありますが推論に使用できます"
+                        : "推論に使用できます"
+                      : "構造の修正が必要です"}
+                  </strong>
                 </div>
                 {!discoveryValidation && <p>FastAPIで確認しています...</p>}
                 {!!discoveryValidation?.errors.length && (
