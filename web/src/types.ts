@@ -2,7 +2,11 @@ export type WorkbenchStep = "data" | "knowledge" | "discovery" | "inference";
 export type Theme = "light" | "dark";
 export type HealthStatus = "checking" | "ok" | "error";
 export type AlgorithmName = "PC" | "DirectLiNGAM" | "GES" | "HillClimbSearch";
-export type InferenceMethod = "SCM" | "LinearDML";
+export type InferenceMethod =
+  | "SCM"
+  | "DoWhyLinearRegression"
+  | "LinearDML"
+  | "CausalForestDML";
 export type EdgeMode = "causal" | "required" | "forbidden";
 export type StructureSource = "manual" | "discovery";
 export type InferenceSource = StructureSource;
