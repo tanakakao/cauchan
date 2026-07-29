@@ -22,6 +22,10 @@ type CausalNodeData = {
   forbiddenChild: boolean;
 };
 
+type ResultEdgeData = {
+  resultEdge: GraphEdgeResponse;
+};
+
 type GraphCanvasProps = {
   columns: string[];
   causalEdges?: EdgeDefinition[];
@@ -35,6 +39,8 @@ type GraphCanvasProps = {
   layoutVersion?: number;
   onAddEdge?: (mode: EdgeMode, edge: EdgeDefinition) => void;
   onRemoveEdge?: (mode: EdgeMode, edge: EdgeDefinition) => void;
+  onAddResultEdge?: (edge: EdgeDefinition) => void;
+  onRemoveResultEdge?: (edge: GraphEdgeResponse) => void;
   onNodeSelect?: (column: string | null) => void;
 };
 
@@ -99,15 +105,15 @@ function editableEdges(
   ];
 }
 
-function discoveryEdges(edges: GraphEdgeResponse[]): Edge[] {
+function discoveryEdges(edges: GraphEdgeResponse[]): Edge<ResultEdgeData>[] {
   return edges.map((edge, index) => {
     const directed = edge.kind === "directed";
     const color = directed ? "#2563eb" : "#b54708";
     return {
-      id: `result|${index}|${edge.source}|${edge.target}`,
+      id: `result|${edge.kind}|${index}|${edge.source}|${edge.target}`,
       source: edge.source,
       target: edge.target,
-      label: directed ? "推定" : "未方向",
+      label: directed ? "有向" : "未方向",
       markerEnd: directed ? { type: MarkerType.ArrowClosed, color } : undefined,
       style: {
         stroke: color,
@@ -116,6 +122,7 @@ function discoveryEdges(edges: GraphEdgeResponse[]): Edge[] {
       },
       labelStyle: { fill: color, fontWeight: 700, fontSize: 10 },
       animated: false,
+      data: { resultEdge: edge },
     };
   });
 }
@@ -133,11 +140,14 @@ export default function GraphCanvas({
   layoutVersion = 0,
   onAddEdge,
   onRemoveEdge,
+  onAddResultEdge,
+  onRemoveResultEdge,
   onNodeSelect,
 }: GraphCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CausalNodeData>>([]);
   const parentSet = useMemo(() => new Set(forbiddenParents), [forbiddenParents]);
   const childSet = useMemo(() => new Set(forbiddenChildren), [forbiddenChildren]);
+  const showsResult = resultEdges !== undefined;
 
   useEffect(() => {
     setNodes((current) => {
@@ -156,19 +166,21 @@ export default function GraphCanvas({
   }, [columns, parentSet, childSet, layoutVersion, setNodes]);
 
   const edges = useMemo(
-    () => resultEdges
-      ? discoveryEdges(resultEdges)
+    () => showsResult
+      ? discoveryEdges(resultEdges ?? [])
       : editableEdges(causalEdges, requiredEdges, forbiddenEdges),
-    [resultEdges, causalEdges, requiredEdges, forbiddenEdges],
+    [showsResult, resultEdges, causalEdges, requiredEdges, forbiddenEdges],
   );
 
   const connect = (connection: Connection) => {
-    if (!editable || !onAddEdge || !connection.source || !connection.target) return;
-    onAddEdge(mode, { source: connection.source, target: connection.target });
+    if (!editable || !connection.source || !connection.target) return;
+    const edge = { source: connection.source, target: connection.target };
+    if (showsResult) onAddResultEdge?.(edge);
+    else onAddEdge?.(mode, edge);
   };
 
   return (
-    <div className="graph-canvas" data-mode={mode}>
+    <div className="graph-canvas" data-mode={showsResult ? "result" : mode}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -178,11 +190,16 @@ export default function GraphCanvas({
         onNodeClick={(_, node) => onNodeSelect?.(node.id)}
         onPaneClick={() => onNodeSelect?.(null)}
         onEdgesDelete={(deleted) => {
-          if (!editable || !onRemoveEdge) return;
+          if (!editable) return;
           for (const edge of deleted) {
+            if (showsResult) {
+              const resultEdge = (edge.data as ResultEdgeData | undefined)?.resultEdge;
+              if (resultEdge) onRemoveResultEdge?.(resultEdge);
+              continue;
+            }
             const [edgeMode, source, target] = edge.id.split("|");
             if (edgeMode === "causal" || edgeMode === "required" || edgeMode === "forbidden") {
-              onRemoveEdge(edgeMode, { source, target });
+              onRemoveEdge?.(edgeMode, { source, target });
             }
           }
         }}
