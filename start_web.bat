@@ -14,6 +14,7 @@ rem Pass the dedicated cauchan endpoints to FastAPI and Vite.
 set "VITE_API_BASE_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1"
 set "CAUCHAN_CORS_ORIGINS=http://%FRONTEND_HOST%:%FRONTEND_PORT%,http://localhost:%FRONTEND_PORT%"
 
+if /i "%~1"=="check" goto check
 if /i "%~1"=="backend" goto backend
 if /i "%~1"=="frontend" goto frontend
 
@@ -84,6 +85,16 @@ echo.
 echo bochan and malchan can remain running on their own reserved ports.
 echo Press any key to close only this launcher window.
 pause >nul
+exit /b 0
+
+:check
+if not "%BACKEND_HOST%"=="127.0.0.1" exit /b 1
+if not "%BACKEND_PORT%"=="8002" exit /b 1
+if not "%FRONTEND_HOST%"=="127.0.0.1" exit /b 1
+if not "%FRONTEND_PORT%"=="5175" exit /b 1
+if not "%HEALTH_URL%"=="http://127.0.0.1:8002/api/v1/health" exit /b 1
+if not "%VITE_API_BASE_URL%"=="http://127.0.0.1:8002/api/v1" exit /b 1
+echo cauchan launcher configuration is valid.
 exit /b 0
 
 :ensure_port_available
