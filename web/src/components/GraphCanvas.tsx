@@ -103,14 +103,18 @@ function collectLayoutEdges(
 }
 
 /**
- * 有向辺の階層を計算し、原因側を左、結果側を右へ配置する。
+ * 有向辺とノード制約から階層を計算し、原因側を左、結果側を右へ配置する。
  *
- * 編集途中で循環がある場合も画面を壊さず、トポロジカルソートで
- * 解決できないノードは左端のフォールバック階層へ配置する。
+ * - 入力だけを持つ終端ノードは右端へ揃える。
+ * - 「原因×」のノードは右端、「結果×」のノードは左端へ配置する。
+ * - 孤立ノードは原因とみなさず中間へ配置する。
+ * - 循環などで解決できないノードは左端ではなく中間へ退避する。
  */
 function causalLayoutPositions(
   columns: string[],
   candidateEdges: EdgeDefinition[],
+  causeForbiddenSet: Set<string>,
+  effectForbiddenSet: Set<string>,
 ): Map<string, NodePosition> {
   const positions = new Map<string, NodePosition>();
   const columnSet = new Set(columns);
@@ -129,24 +133,26 @@ function causalLayoutPositions(
   }
 
   const edges = [...uniqueEdges.values()];
-  if (!edges.length) {
-    columns.forEach((column, index) => positions.set(column, fallbackPosition(index)));
-    return positions;
-  }
-
   const outgoing = new Map(columns.map((column) => [column, [] as string[]]));
-  const indegree = new Map(columns.map((column) => [column, 0]));
+  const incoming = new Map(columns.map((column) => [column, [] as string[]]));
+  const remainingIndegree = new Map(columns.map((column) => [column, 0]));
   const level = new Map(columns.map((column) => [column, 0]));
 
   for (const edge of edges) {
     outgoing.get(edge.source)?.push(edge.target);
-    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
+    incoming.get(edge.target)?.push(edge.source);
+    remainingIndegree.set(
+      edge.target,
+      (remainingIndegree.get(edge.target) ?? 0) + 1,
+    );
   }
 
   const sortByColumnOrder = (left: string, right: string) => (
     (columnOrder.get(left) ?? 0) - (columnOrder.get(right) ?? 0)
   );
-  const queue = columns.filter((column) => indegree.get(column) === 0).sort(sortByColumnOrder);
+  const queue = columns
+    .filter((column) => remainingIndegree.get(column) === 0)
+    .sort(sortByColumnOrder);
   const processed = new Set<string>();
 
   while (queue.length) {
@@ -156,9 +162,12 @@ function causalLayoutPositions(
 
     const targets = [...(outgoing.get(source) ?? [])].sort(sortByColumnOrder);
     for (const target of targets) {
-      level.set(target, Math.max(level.get(target) ?? 0, (level.get(source) ?? 0) + 1));
-      const nextIndegree = (indegree.get(target) ?? 0) - 1;
-      indegree.set(target, nextIndegree);
+      level.set(
+        target,
+        Math.max(level.get(target) ?? 0, (level.get(source) ?? 0) + 1),
+      );
+      const nextIndegree = (remainingIndegree.get(target) ?? 0) - 1;
+      remainingIndegree.set(target, nextIndegree);
       if (nextIndegree === 0) {
         queue.push(target);
         queue.sort(sortByColumnOrder);
@@ -166,22 +175,60 @@ function causalLayoutPositions(
     }
   }
 
+  const processedMaxLevel = Math.max(
+    0,
+    ...columns
+      .filter((column) => processed.has(column))
+      .map((column) => level.get(column) ?? 0),
+  );
+  const unresolvedMiddleLevel = Math.max(1, Math.ceil(processedMaxLevel / 2));
+
   // 循環などでトポロジカルソートできないノードは、解決済みの親が
-  // あればその右隣、なければ原因側の階層へ置く。
+  // あればその右隣へ置き、それ以外は中間階層へ退避する。
   for (const column of columns) {
     if (processed.has(column)) continue;
-    const resolvedParentLevels = edges
-      .filter((edge) => edge.target === column && processed.has(edge.source))
-      .map((edge) => level.get(edge.source) ?? 0);
+    const resolvedParentLevels = (incoming.get(column) ?? [])
+      .filter((parent) => processed.has(parent))
+      .map((parent) => level.get(parent) ?? 0);
     level.set(
       column,
-      resolvedParentLevels.length ? Math.max(...resolvedParentLevels) + 1 : 0,
+      resolvedParentLevels.length
+        ? Math.max(...resolvedParentLevels) + 1
+        : unresolvedMiddleLevel,
     );
+  }
+
+  const structuralMaxLevel = Math.max(0, ...columns.map((column) => level.get(column) ?? 0));
+  const sinkLevel = Math.max(2, structuralMaxLevel);
+  const explicitlyResultOnlyLevel = sinkLevel + 1;
+  const neutralLevel = Math.max(1, Math.ceil(sinkLevel / 2));
+
+  for (const column of columns) {
+    const incomingCount = incoming.get(column)?.length ?? 0;
+    const outgoingCount = outgoing.get(column)?.length ?? 0;
+    const isStructuralCauseOnly = incomingCount === 0 && outgoingCount > 0;
+    const isStructuralResultOnly = incomingCount > 0 && outgoingCount === 0;
+    const isIsolated = incomingCount === 0 && outgoingCount === 0;
+    const causeForbidden = causeForbiddenSet.has(column);
+    const effectForbidden = effectForbiddenSet.has(column);
+
+    // 両方の制約がある場合は検証エラー側へ任せ、構造から計算した位置を保つ。
+    if (causeForbidden && !effectForbidden) {
+      level.set(column, explicitlyResultOnlyLevel);
+    } else if (effectForbidden && !causeForbidden) {
+      level.set(column, 0);
+    } else if (isStructuralResultOnly) {
+      level.set(column, sinkLevel);
+    } else if (isStructuralCauseOnly) {
+      level.set(column, 0);
+    } else if (isIsolated) {
+      level.set(column, neutralLevel);
+    }
   }
 
   const layers = new Map<number, string[]>();
   for (const column of columns) {
-    const nodeLevel = level.get(column) ?? 0;
+    const nodeLevel = level.get(column) ?? neutralLevel;
     layers.set(nodeLevel, [...(layers.get(nodeLevel) ?? []), column]);
   }
   for (const layerColumns of layers.values()) layerColumns.sort(sortByColumnOrder);
@@ -330,16 +377,25 @@ export default function GraphCanvas({
     () => collectLayoutEdges(showsResult, resultEdges, causalEdges, requiredEdges),
     [showsResult, resultEdges, causalEdges, requiredEdges],
   );
-  const layoutSignature = useMemo(
+  const edgeLayoutSignature = useMemo(
     () => layoutEdges
       .map((edge) => `${edge.source}->${edge.target}`)
       .sort()
       .join("|"),
     [layoutEdges],
   );
+  const policyLayoutSignature = useMemo(() => {
+    const causes = [...parentSet].sort().join("|");
+    const effects = [...childSet].sort().join("|");
+    return causes || effects ? `cause-forbidden:${causes};effect-forbidden:${effects}` : "";
+  }, [parentSet, childSet]);
+  const layoutSignature = useMemo(
+    () => [edgeLayoutSignature, policyLayoutSignature].filter(Boolean).join("||"),
+    [edgeLayoutSignature, policyLayoutSignature],
+  );
   const layoutPositions = useMemo(
-    () => causalLayoutPositions(columns, layoutEdges),
-    [columnsKey, layoutSignature],
+    () => causalLayoutPositions(columns, layoutEdges, parentSet, childSet),
+    [columnsKey, layoutSignature, parentSet, childSet],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CausalNodeData>>(
     makeNodes(columns, parentSet, childSet, new Map(), layoutPositions, true),
