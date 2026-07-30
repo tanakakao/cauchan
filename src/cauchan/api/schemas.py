@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 
 
 AlgorithmName = Literal["PC", "DirectLiNGAM", "GES", "HillClimbSearch"]
-InferenceMethod = Literal["SCM", "LinearDML"]
+InferenceMethod = Literal[
+    "SCM",
+    "DoWhyLinearRegression",
+    "LinearDML",
+    "CausalForestDML",
+]
 EdgeKind = Literal["directed", "undirected"]
 
 
