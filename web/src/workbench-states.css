@@ -1,0 +1,19 @@
+.inline-alert.info .inline-alert-icon {
+  color: #fff;
+  background: var(--primary);
+}
+
+.inline-alert.success .inline-alert-icon {
+  color: #fff;
+  background: var(--success);
+}
+
+.inline-alert.warning .inline-alert-icon {
+  color: #fff;
+  background: var(--warning);
+}
+
+.inline-alert.error .inline-alert-icon {
+  color: #fff;
+  background: var(--danger);
+}
