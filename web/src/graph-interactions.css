@@ -1,18 +1,28 @@
 /* React Flowの接続点を見やすく、ドラッグしやすくする。 */
 .node-handle {
+  --handle-color: var(--primary);
   width: 15px !important;
   height: 15px !important;
   border: 3px solid var(--surface-raised) !important;
-  background: var(--primary) !important;
+  background: var(--handle-color) !important;
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--primary) 24%, transparent),
-    0 3px 9px color-mix(in srgb, var(--primary) 24%, transparent);
+    0 0 0 2px color-mix(in srgb, var(--handle-color) 24%, transparent),
+    0 3px 9px color-mix(in srgb, var(--handle-color) 24%, transparent);
   cursor: crosshair;
   transition:
     width 120ms ease,
     height 120ms ease,
     box-shadow 120ms ease,
     background-color 120ms ease;
+}
+
+/* 左側は入力、右側は出力として色を分ける。 */
+.node-handle-target {
+  --handle-color: var(--warning);
+}
+
+.node-handle-source {
+  --handle-color: var(--primary);
 }
 
 /* 見た目以上に掴める範囲を広げる。 */
@@ -27,10 +37,10 @@
 .node-handle.connectingto {
   width: 18px !important;
   height: 18px !important;
-  background: var(--primary-hover) !important;
+  background: color-mix(in srgb, var(--handle-color) 82%, white) !important;
   box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent),
-    0 5px 14px color-mix(in srgb, var(--primary) 30%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--handle-color) 22%, transparent),
+    0 5px 14px color-mix(in srgb, var(--handle-color) 30%, transparent);
 }
 
 @media (pointer: coarse) {
