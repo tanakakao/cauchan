@@ -20,6 +20,28 @@ const ICONS: Record<WorkbenchStep, string> = {
   inference: "→",
 };
 
+const API_STATUS_LABELS = {
+  checking: "確認中",
+  ok: "接続済み",
+  error: "エラー",
+} as const;
+
+const DEFAULT_PORTAL_URL = "http://127.0.0.1:5172";
+
+function resolvePortalUrl(): string {
+  const configured = import.meta.env.VITE_PORTAL_URL?.trim();
+  if (!configured) return DEFAULT_PORTAL_URL;
+
+  try {
+    const url = new URL(configured, window.location.href);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : DEFAULT_PORTAL_URL;
+  } catch {
+    return DEFAULT_PORTAL_URL;
+  }
+}
+
 function WorkbenchLayout() {
   const {
     theme,
@@ -47,6 +69,7 @@ function WorkbenchLayout() {
   const finalEdgeCount = structureSource === "manual"
     ? causalEdges.length
     : editedDiscoveryEdges.filter((edge) => edge.kind === "directed").length;
+  const apiStatusLabel = API_STATUS_LABELS[health.status];
 
   return (
     <div className="app-root">
@@ -54,8 +77,8 @@ function WorkbenchLayout() {
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true"><span>c</span></div>
           <div className="brand-wordmark">
-            <h1>cauchan</h1>
-            <p>CAUSAL DISCOVERY WORKBENCH</p>
+            <h1>因果分析</h1>
+            <p>Materials Analysis Workbench · cauchan</p>
           </div>
         </div>
 
@@ -76,25 +99,35 @@ function WorkbenchLayout() {
         </div>
 
         <div className="header-actions">
-          <div className="runtime-pill" title={health.text}>
+          <div className="runtime-pill" title={`API接続: ${health.text}`}>
             <span className={`dot ${health.status}`} />
-            <span className="runtime-copy"><small>API status</small><strong>{health.text}</strong></span>
+            <span className="runtime-copy"><small>API接続</small><strong>{apiStatusLabel}</strong></span>
           </div>
           <button
             type="button"
-            className="icon-button secondary"
+            className="portal-button secondary"
+            title="ツール一覧へ戻る"
+            aria-label="ツール一覧へ戻る"
+            onClick={() => window.location.assign(resolvePortalUrl())}
+          >
+            <span aria-hidden="true">▦</span>
+            <span>ツール一覧</span>
+          </button>
+          <button
+            type="button"
+            className="icon-button secondary theme-toggle"
             title={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
             aria-label={theme === "dark" ? "ライトテーマへ切り替える" : "ダークテーマへ切り替える"}
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           >
-            {theme === "dark" ? "☀" : "☾"}
+            <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
           </button>
         </div>
       </header>
 
       <main className="app-shell">
         <aside className="left-rail">
-          <div className="rail-section-label">WORKSPACE</div>
+          <div className="rail-section-label">WORKFLOW</div>
           <nav className="tabs" aria-label="ページナビゲーション">
             {STEPS.map(([id, label, detail], stepIndex) => (
               <button
@@ -112,14 +145,33 @@ function WorkbenchLayout() {
           </nav>
           <div className="rail-spacer" />
           <div className="rail-note">
-            <div className="shield-icon">β</div>
+            <div className="shield-icon">c</div>
             <div><strong>React + FastAPI</strong><p>手動構造または探索後に編集した構造から因果効果を推定します。</p></div>
           </div>
         </aside>
 
         <section className="content">
           <div className="content-inner">
-            {error && <button className="message error inline-message" onClick={() => setError(null)}>{error}</button>}
+            {error && (
+              <div className="inline-alert error" role="alert">
+                <div className="inline-alert-icon" aria-hidden="true">!</div>
+                <div className="inline-alert-copy">
+                  <span className="eyebrow">ERROR</span>
+                  <strong>処理を完了できませんでした</strong>
+                  <p>{error}</p>
+                  <small>入力内容、因果構造、API接続を確認してから再実行してください。</small>
+                </div>
+                <button
+                  type="button"
+                  className="alert-close icon-button secondary"
+                  title="エラー表示を閉じる"
+                  aria-label="エラー表示を閉じる"
+                  onClick={() => setError(null)}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+            )}
             <Page />
           </div>
         </section>
@@ -127,7 +179,7 @@ function WorkbenchLayout() {
         <aside className="right-rail">
           <div className={`side-card runtime-card ${health.status}`}>
             <div className="side-card-title"><span>RUNTIME</span><strong>API接続</strong></div>
-            <div className="runtime-large"><span className={`dot ${health.status}`} /><div><strong>FastAPI</strong><small>{health.text}</small></div></div>
+            <div className="runtime-large"><span className={`dot ${health.status}`} /><div><strong>FastAPI</strong><small>{apiStatusLabel} · {health.text}</small></div></div>
           </div>
           <div className="side-card">
             <div className="side-card-title"><span>DATA CONTEXT</span><strong>現在のデータ</strong></div>
@@ -140,7 +192,7 @@ function WorkbenchLayout() {
           <div className="side-card">
             <div className="side-card-title"><span>FINAL STRUCTURE</span><strong>採用する因果構造</strong></div>
             <div className="context-list">
-              <div><span>Source</span><strong>{structureSource === "manual" ? "Manual" : "Discovery + Edit"}</strong></div>
+              <div><span>Source</span><strong title={structureSource === "manual" ? "Manual" : "Discovery + Edit"}>{structureSource === "manual" ? "Manual" : "Discovery + Edit"}</strong></div>
               <div><span>Directed</span><strong>{finalEdgeCount}</strong></div>
               <div><span>Undirected</span><strong>{structureSource === "discovery" ? unresolvedDiscoveryEdges : 0}</strong></div>
             </div>
@@ -150,7 +202,7 @@ function WorkbenchLayout() {
             <div className="context-list">
               <div><span>Required</span><strong>{requiredEdges.length}</strong></div>
               <div><span>Forbidden</span><strong>{forbiddenEdges.length}</strong></div>
-              <div><span>Discovery</span><strong>{discovery?.model_name || "—"}</strong></div>
+              <div><span>Discovery</span><strong title={discovery?.model_name}>{discovery?.model_name || "—"}</strong></div>
             </div>
           </div>
           <div className="side-card">
@@ -163,14 +215,20 @@ function WorkbenchLayout() {
       </main>
 
       <footer className="statusbar">
-        <span><span className={`dot ${health.status}`} /> API {health.status}</span>
+        <span><span className={`dot ${health.status}`} /> API接続 {apiStatusLabel}</span>
         <span>{dataset ? `${dataset.row_count.toLocaleString()} rows` : "No data"}</span>
-        <span className="privacy-status">cauchan web 0.2.0</span>
+        <span className="privacy-status">React · FastAPI · cauchan</span>
       </footer>
 
       {busy && (
-        <div className="overlay" role="status" aria-live="polite">
-          <div className="busy-card"><div className="spinner" /><h3>{busy}</h3><div className="busy-progress"><span /></div></div>
+        <div className="overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="busy-card">
+            <div className="spinner" aria-hidden="true" />
+            <span className="eyebrow">PROCESSING</span>
+            <h3>{busy}</h3>
+            <p>処理中は画面操作を一時停止しています。完了後に結果を表示します。</p>
+            <span className="busy-state">処理中</span>
+          </div>
         </div>
       )}
     </div>
