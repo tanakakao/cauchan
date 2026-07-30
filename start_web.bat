@@ -11,6 +11,7 @@ set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
 set "APP_DIR=%~dp0src"
 set "PROJECT_FILE=%~dp0pyproject.toml"
+set "BACKEND_DEPENDENCY_CHECK=import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl, dowhy, econml, lightgbm; assert int(pandas.__version__.split('.')[0]) ^< 3"
 
 rem Pass the dedicated cauchan endpoints to FastAPI and Vite.
 set "VITE_API_BASE_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1"
@@ -134,12 +135,12 @@ if errorlevel 1 (
 
 echo Preparing the cauchan Python environment from pyproject.toml...
 pushd "%~dp0"
-uv run python -c "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl"
+uv run python -c "%BACKEND_DEPENDENCY_CHECK%"
 set "DEPENDENCY_EXIT=%ERRORLEVEL%"
 popd
 if not "%DEPENDENCY_EXIT%"=="0" (
     echo.
-    echo [ERROR] Failed to prepare the cauchan Python dependencies with uv.
+    echo [ERROR] Failed to prepare compatible cauchan Python dependencies with uv.
     echo Run: uv sync
     echo.
     pause
@@ -148,11 +149,11 @@ if not "%DEPENDENCY_EXIT%"=="0" (
 exit /b 0
 
 :ensure_venv_dependencies
-"%VENV_PYTHON%" -c "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl" >nul 2>&1
+"%VENV_PYTHON%" -c "%BACKEND_DEPENDENCY_CHECK%" >nul 2>&1
 if not errorlevel 1 exit /b 0
 
-echo Required backend packages are missing from .venv.
-echo Installing the cauchan project and its dependencies...
+echo Required backend packages are missing or incompatible in .venv.
+echo Installing the cauchan project and compatible dependencies...
 pushd "%~dp0"
 where uv >nul 2>&1
 if not errorlevel 1 (
@@ -181,11 +182,11 @@ if errorlevel 1 (
 )
 popd
 
-"%VENV_PYTHON%" -c "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl" >nul 2>&1
+"%VENV_PYTHON%" -c "%BACKEND_DEPENDENCY_CHECK%" >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo [ERROR] Backend dependencies are still unavailable after installation.
-    echo Check the installation output above.
+    echo [ERROR] Backend dependencies are still unavailable or incompatible after installation.
+    echo Check the installation output above. DoWhy currently requires pandas less than 3.
     echo.
     pause
     exit /b 1
@@ -279,6 +280,6 @@ call npm run dev -- --host %FRONTEND_HOST% --port %FRONTEND_PORT% --strictPort
 set "FRONTEND_EXIT=%ERRORLEVEL%"
 echo.
 echo [ERROR] cauchan frontend stopped. Exit code: %FRONTEND_EXIT%
-echo Check the error message above. This window will remain open.
+echo Check the npm or Vite message above. This window will remain open.
 pause
 exit /b %FRONTEND_EXIT%
