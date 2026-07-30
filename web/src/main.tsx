@@ -7,6 +7,7 @@ import "./structure-workflow.css";
 import "./graph-interactions.css";
 import "./inference-results.css";
 import "./workbench-design.css";
+import "./workbench-states.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
