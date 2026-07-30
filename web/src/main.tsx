@@ -8,6 +8,7 @@ import "./graph-interactions.css";
 import "./inference-results.css";
 import "./workbench-design.css";
 import "./workbench-states.css";
+import "./data-dropzone.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
