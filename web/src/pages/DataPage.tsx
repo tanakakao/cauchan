@@ -1,9 +1,8 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useWorkbench } from "../context/WorkbenchContext";
 
 export default function DataPage() {
   const { dataset, uploadDataset } = useWorkbench();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   const submit = (file?: File) => {
@@ -23,11 +22,27 @@ export default function DataPage() {
         </span>
       </header>
 
-      <section className="panel upload-panel">
-        <div
+      <section className="panel upload-panel data-file-panel">
+        <div className="panel-title">
+          <div>
+            <span>DATA SOURCE</span>
+            <h3>{dataset ? "データを入れ替える" : "データファイル"}</h3>
+            <p>対応形式: CSV / XLSX</p>
+          </div>
+          {dataset && <span className="status-chip success">Loaded</span>}
+        </div>
+        <label
           className={`dropzone ${dragging ? "dragging" : ""}`}
-          onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-          onDragOver={(event) => event.preventDefault()}
+          aria-label="CSVまたはXLSXファイルをドロップまたは選択"
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+            setDragging(true);
+          }}
           onDragLeave={() => setDragging(false)}
           onDrop={(event) => {
             event.preventDefault();
@@ -35,20 +50,25 @@ export default function DataPage() {
             submit(event.dataTransfer.files[0]);
           }}
         >
-          <div className="dropzone-icon">▦</div>
-          <div>
-            <strong>ファイルをドロップ</strong>
-            <p>.csv / .xlsx に対応しています。データはFastAPIプロセス内に一時保存されます。</p>
-          </div>
-          <button type="button" onClick={() => inputRef.current?.click()}>ファイルを選択</button>
           <input
-            ref={inputRef}
             type="file"
             accept=".csv,.xlsx"
-            hidden
             onChange={(event) => submit(event.target.files?.[0])}
           />
-        </div>
+          <span className="upload-symbol">⇧</span>
+          <strong>
+            {dragging
+              ? "ここにドロップして読み込む"
+              : dataset
+                ? "別のファイルをドロップまたは選択"
+                : "CSVまたはExcelをドロップまたは選択"}
+          </strong>
+          <span>
+            {dataset
+              ? `読込中のファイル: ${dataset.filename}`
+              : "ファイルはAPIで解析され、現在のFastAPIプロセス内に保持されます。"}
+          </span>
+        </label>
       </section>
 
       {dataset && (
