@@ -63,6 +63,8 @@ type GraphCanvasProps = {
   onResultEdgeSelect?: (selection: ResultEdgeSelection | null) => void;
 };
 
+type NodePosition = { x: number; y: number };
+
 const EDGE_COLORS: Record<EdgeMode, string> = {
   causal: "#2563eb",
   required: "#07875f",
@@ -73,26 +75,145 @@ const EDGE_COLORS: Record<EdgeMode, string> = {
 // useLayoutEffectが連続実行されるため、共有の空配列を使用する。
 const EMPTY_EDGE_DEFINITIONS: EdgeDefinition[] = [];
 const EMPTY_STRINGS: string[] = [];
+const NODE_X_GAP = 260;
+const NODE_Y_GAP = 142;
+const LAYOUT_MARGIN_X = 42;
+const LAYOUT_MARGIN_Y = 42;
 
-function initialPosition(index: number): { x: number; y: number } {
+function fallbackPosition(index: number): NodePosition {
   const columnsPerRow = 3;
   return {
-    x: (index % columnsPerRow) * 245 + 40,
-    y: Math.floor(index / columnsPerRow) * 150 + 40,
+    x: (index % columnsPerRow) * 245 + LAYOUT_MARGIN_X,
+    y: Math.floor(index / columnsPerRow) * 150 + LAYOUT_MARGIN_Y,
   };
+}
+
+function collectLayoutEdges(
+  showsResult: boolean,
+  resultEdges: GraphEdgeResponse[] | undefined,
+  causalEdges: EdgeDefinition[],
+  requiredEdges: EdgeDefinition[],
+): EdgeDefinition[] {
+  if (showsResult) {
+    return (resultEdges ?? [])
+      .filter((edge) => edge.kind === "directed")
+      .map(({ source, target }) => ({ source, target }));
+  }
+  return [...causalEdges, ...requiredEdges];
+}
+
+/**
+ * 有向辺の階層を計算し、原因側を左、結果側を右へ配置する。
+ *
+ * 編集途中で循環がある場合も画面を壊さず、トポロジカルソートで
+ * 解決できないノードは左端のフォールバック階層へ配置する。
+ */
+function causalLayoutPositions(
+  columns: string[],
+  candidateEdges: EdgeDefinition[],
+): Map<string, NodePosition> {
+  const positions = new Map<string, NodePosition>();
+  const columnSet = new Set(columns);
+  const columnOrder = new Map(columns.map((column, index) => [column, index]));
+  const uniqueEdges = new Map<string, EdgeDefinition>();
+
+  for (const edge of candidateEdges) {
+    if (
+      edge.source === edge.target
+      || !columnSet.has(edge.source)
+      || !columnSet.has(edge.target)
+    ) {
+      continue;
+    }
+    uniqueEdges.set(`${edge.source}\u0000${edge.target}`, edge);
+  }
+
+  const edges = [...uniqueEdges.values()];
+  if (!edges.length) {
+    columns.forEach((column, index) => positions.set(column, fallbackPosition(index)));
+    return positions;
+  }
+
+  const outgoing = new Map(columns.map((column) => [column, [] as string[]]));
+  const indegree = new Map(columns.map((column) => [column, 0]));
+  const level = new Map(columns.map((column) => [column, 0]));
+
+  for (const edge of edges) {
+    outgoing.get(edge.source)?.push(edge.target);
+    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
+  }
+
+  const sortByColumnOrder = (left: string, right: string) => (
+    (columnOrder.get(left) ?? 0) - (columnOrder.get(right) ?? 0)
+  );
+  const queue = columns.filter((column) => indegree.get(column) === 0).sort(sortByColumnOrder);
+  const processed = new Set<string>();
+
+  while (queue.length) {
+    const source = queue.shift();
+    if (!source) break;
+    processed.add(source);
+
+    const targets = [...(outgoing.get(source) ?? [])].sort(sortByColumnOrder);
+    for (const target of targets) {
+      level.set(target, Math.max(level.get(target) ?? 0, (level.get(source) ?? 0) + 1));
+      const nextIndegree = (indegree.get(target) ?? 0) - 1;
+      indegree.set(target, nextIndegree);
+      if (nextIndegree === 0) {
+        queue.push(target);
+        queue.sort(sortByColumnOrder);
+      }
+    }
+  }
+
+  // 循環などでトポロジカルソートできないノードは、解決済みの親が
+  // あればその右隣、なければ原因側の階層へ置く。
+  for (const column of columns) {
+    if (processed.has(column)) continue;
+    const resolvedParentLevels = edges
+      .filter((edge) => edge.target === column && processed.has(edge.source))
+      .map((edge) => level.get(edge.source) ?? 0);
+    level.set(
+      column,
+      resolvedParentLevels.length ? Math.max(...resolvedParentLevels) + 1 : 0,
+    );
+  }
+
+  const layers = new Map<number, string[]>();
+  for (const column of columns) {
+    const nodeLevel = level.get(column) ?? 0;
+    layers.set(nodeLevel, [...(layers.get(nodeLevel) ?? []), column]);
+  }
+  for (const layerColumns of layers.values()) layerColumns.sort(sortByColumnOrder);
+
+  const maxLayerSize = Math.max(1, ...[...layers.values()].map((items) => items.length));
+  for (const [nodeLevel, layerColumns] of [...layers.entries()].sort(([left], [right]) => left - right)) {
+    const verticalOffset = ((maxLayerSize - layerColumns.length) * NODE_Y_GAP) / 2;
+    layerColumns.forEach((column, index) => {
+      positions.set(column, {
+        x: nodeLevel * NODE_X_GAP + LAYOUT_MARGIN_X,
+        y: index * NODE_Y_GAP + verticalOffset + LAYOUT_MARGIN_Y,
+      });
+    });
+  }
+
+  return positions;
 }
 
 function makeNodes(
   columns: string[],
   parentSet: Set<string>,
   childSet: Set<string>,
-  positions: Map<string, { x: number; y: number }>,
+  positions: Map<string, NodePosition>,
+  layoutPositions: Map<string, NodePosition>,
   resetLayout: boolean,
 ): Node<CausalNodeData>[] {
   return columns.map((column, index) => ({
     id: column,
     type: "causalNode",
-    position: resetLayout ? initialPosition(index) : positions.get(column) ?? initialPosition(index),
+    position: resetLayout
+      ? layoutPositions.get(column) ?? fallbackPosition(index)
+      : positions.get(column) ?? layoutPositions.get(column) ?? fallbackPosition(index),
     data: {
       label: column,
       forbiddenParent: parentSet.has(column),
@@ -105,7 +226,13 @@ function CausalNode({ data, selected }: NodeProps) {
   const nodeData = data as CausalNodeData;
   return (
     <div className={`causal-node ${selected ? "selected" : ""}`}>
-      <Handle type="target" position={Position.Left} className="node-handle" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="node-handle node-handle-target"
+        aria-label="入力側の接続ポイント"
+        title="入力側：原因ノードからのエッジを受け取ります"
+      />
       <div className="causal-node-copy">
         <small>VARIABLE</small>
         <strong title={nodeData.label}>{nodeData.label}</strong>
@@ -114,7 +241,13 @@ function CausalNode({ data, selected }: NodeProps) {
         {nodeData.forbiddenParent && <span className="node-badge parent">原因×</span>}
         {nodeData.forbiddenChild && <span className="node-badge child">結果×</span>}
       </div>
-      <Handle type="source" position={Position.Right} className="node-handle" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="node-handle node-handle-source"
+        aria-label="出力側の接続ポイント"
+        title="出力側：このノードを原因とするエッジを伸ばします"
+      />
     </div>
   );
 }
@@ -192,23 +325,58 @@ export default function GraphCanvas({
   const parentSet = useMemo(() => new Set(forbiddenParents), [forbiddenParents]);
   const childSet = useMemo(() => new Set(forbiddenChildren), [forbiddenChildren]);
   const columnsKey = useMemo(() => columns.join("\u0000"), [columns]);
+  const showsResult = resultEdges !== undefined;
+  const layoutEdges = useMemo(
+    () => collectLayoutEdges(showsResult, resultEdges, causalEdges, requiredEdges),
+    [showsResult, resultEdges, causalEdges, requiredEdges],
+  );
+  const layoutSignature = useMemo(
+    () => layoutEdges
+      .map((edge) => `${edge.source}->${edge.target}`)
+      .sort()
+      .join("|"),
+    [layoutEdges],
+  );
+  const layoutPositions = useMemo(
+    () => causalLayoutPositions(columns, layoutEdges),
+    [columnsKey, layoutSignature],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CausalNodeData>>(
-    makeNodes(columns, parentSet, childSet, new Map(), true),
+    makeNodes(columns, parentSet, childSet, new Map(), layoutPositions, true),
   );
   const flowInstance = useRef<
     ReactFlowInstance<Node<CausalNodeData>, Edge<CanvasEdgeData>> | null
   >(null);
   const previousLayoutVersion = useRef(layoutVersion);
-  const showsResult = resultEdges !== undefined;
+  const previousLayoutSignature = useRef(layoutSignature);
 
   useLayoutEffect(() => {
-    const resetLayout = layoutVersion !== previousLayoutVersion.current;
+    const layoutRequested = layoutVersion !== previousLayoutVersion.current;
+    const firstStructureAppeared = !previousLayoutSignature.current && Boolean(layoutSignature);
+    const resetLayout = layoutRequested || firstStructureAppeared;
     previousLayoutVersion.current = layoutVersion;
+    previousLayoutSignature.current = layoutSignature;
+
     setNodes((current) => {
       const positions = new Map(current.map((node) => [node.id, node.position]));
-      return makeNodes(columns, parentSet, childSet, positions, resetLayout);
+      return makeNodes(
+        columns,
+        parentSet,
+        childSet,
+        positions,
+        layoutPositions,
+        resetLayout,
+      );
     });
-  }, [columns, parentSet, childSet, layoutVersion, setNodes]);
+  }, [
+    columns,
+    parentSet,
+    childSet,
+    layoutVersion,
+    layoutSignature,
+    layoutPositions,
+    setNodes,
+  ]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
