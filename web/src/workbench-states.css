@@ -3,9 +3,17 @@
   background: var(--primary);
 }
 
+.inline-alert.info .eyebrow {
+  color: var(--primary);
+}
+
 .inline-alert.success .inline-alert-icon {
   color: #fff;
   background: var(--success);
+}
+
+.inline-alert.success .eyebrow {
+  color: var(--success);
 }
 
 .inline-alert.warning .inline-alert-icon {
@@ -13,7 +21,15 @@
   background: var(--warning);
 }
 
+.inline-alert.warning .eyebrow {
+  color: var(--warning);
+}
+
 .inline-alert.error .inline-alert-icon {
   color: #fff;
   background: var(--danger);
+}
+
+.inline-alert.error .eyebrow {
+  color: var(--danger);
 }
