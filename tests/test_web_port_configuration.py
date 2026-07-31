@@ -57,15 +57,29 @@ class WebPortConfigurationTest(unittest.TestCase):
 
         self.assertIn(":ensure_backend_dependencies", launcher)
         self.assertIn(
-            "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl",
+            "import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl, sklearn",
             launcher,
         )
         self.assertIn(
-            'uv pip install --python "%VENV_PYTHON%" -e .',
+            'uv pip install --python "%VENV_PYTHON%" --upgrade -e .',
             launcher,
         )
-        self.assertIn('"%VENV_PYTHON%" -m pip install -e .', launcher)
+        self.assertIn(
+            '"%VENV_PYTHON%" -m pip install --upgrade -e .',
+            launcher,
+        )
         self.assertIn('set "PROJECT_FILE=%~dp0pyproject.toml"', launcher)
+
+    def test_optional_inference_dependencies_do_not_block_web_startup(self) -> None:
+        """遅延読込の推論依存関係は警告に留め、Web起動を継続する。"""
+        launcher = (ROOT / "start_web.bat").read_text(encoding="utf-8")
+
+        self.assertIn("OPTIONAL_INFERENCE_DEPENDENCY_CHECK", launcher)
+        self.assertIn("from dowhy import CausalModel", launcher)
+        self.assertIn("from econml.dml import LinearDML, CausalForestDML", launcher)
+        self.assertIn("The Web app and SCM inference can still start.", launcher)
+        self.assertIn(":warn_optional_dependencies_venv", launcher)
+        self.assertIn(":warn_optional_dependencies_uv", launcher)
 
     def test_ports_do_not_overlap_related_apps(self) -> None:
         """cauchanの既定ポートがbochan・malchanと重複しない。"""

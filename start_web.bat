@@ -11,7 +11,8 @@ set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
 set "APP_DIR=%~dp0src"
 set "PROJECT_FILE=%~dp0pyproject.toml"
-set "BACKEND_DEPENDENCY_CHECK=import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl, dowhy, econml, lightgbm; assert int(pandas.__version__.split('.')[0]) ^< 3"
+set "BACKEND_DEPENDENCY_CHECK=import fastapi, uvicorn, multipart, pandas, numpy, networkx, openpyxl, sklearn; assert pandas.__version__.split('.')[0] == '2'"
+set "OPTIONAL_INFERENCE_DEPENDENCY_CHECK=from dowhy import CausalModel; from econml.dml import LinearDML, CausalForestDML; import lightgbm"
 
 rem Pass the dedicated cauchan endpoints to FastAPI and Vite.
 set "VITE_API_BASE_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1"
@@ -39,35 +40,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist "%VENV_PYTHON%" (
-    echo Python: %VENV_PYTHON%
-) else (
-    where uv >nul 2>&1
-    if errorlevel 1 (
-        echo [ERROR] Neither .venv\Scripts\python.exe nor uv was found.
-        echo Create the virtual environment in this repository or install uv.
-        echo.
-        pause
-        exit /b 1
-    )
-    echo Python: uv run python
-)
+call :show_python
+if errorlevel 1 exit /b 1
 
-if not exist "%APP_DIR%\cauchan\api\app.py" (
-    echo [ERROR] FastAPI application was not found under:
-    echo %APP_DIR%\cauchan\api\app.py
-    echo.
-    pause
-    exit /b 1
-)
-
-if not exist "%PROJECT_FILE%" (
-    echo [ERROR] pyproject.toml was not found under:
-    echo %PROJECT_FILE%
-    echo.
-    pause
-    exit /b 1
-)
+call :validate_project_files
+if errorlevel 1 exit /b 1
 
 call :ensure_backend_dependencies
 if errorlevel 1 exit /b 1
@@ -121,6 +98,42 @@ if not exist "%PROJECT_FILE%" exit /b 1
 echo cauchan launcher configuration is valid.
 exit /b 0
 
+:show_python
+if exist "%VENV_PYTHON%" (
+    echo Python: %VENV_PYTHON%
+    exit /b 0
+)
+
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Neither .venv\Scripts\python.exe nor uv was found.
+    echo Create the virtual environment in this repository or install uv.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Python: uv run python
+exit /b 0
+
+:validate_project_files
+if not exist "%APP_DIR%\cauchan\api\app.py" (
+    echo [ERROR] FastAPI application was not found under:
+    echo %APP_DIR%\cauchan\api\app.py
+    echo.
+    pause
+    exit /b 1
+)
+
+if not exist "%PROJECT_FILE%" (
+    echo [ERROR] pyproject.toml was not found under:
+    echo %PROJECT_FILE%
+    echo.
+    pause
+    exit /b 1
+)
+exit /b 0
+
 :ensure_backend_dependencies
 if exist "%VENV_PYTHON%" goto ensure_venv_dependencies
 
@@ -137,10 +150,11 @@ echo Preparing the cauchan Python environment from pyproject.toml...
 pushd "%~dp0"
 uv run python -c "%BACKEND_DEPENDENCY_CHECK%"
 set "DEPENDENCY_EXIT=%ERRORLEVEL%"
+if "%DEPENDENCY_EXIT%"=="0" call :warn_optional_dependencies_uv
 popd
 if not "%DEPENDENCY_EXIT%"=="0" (
     echo.
-    echo [ERROR] Failed to prepare compatible cauchan Python dependencies with uv.
+    echo [ERROR] Failed to prepare the core cauchan backend dependencies with uv.
     echo Run: uv sync
     echo.
     pause
@@ -150,14 +164,17 @@ exit /b 0
 
 :ensure_venv_dependencies
 "%VENV_PYTHON%" -c "%BACKEND_DEPENDENCY_CHECK%" >nul 2>&1
-if not errorlevel 1 exit /b 0
+if not errorlevel 1 (
+    call :warn_optional_dependencies_venv
+    exit /b 0
+)
 
-echo Required backend packages are missing or incompatible in .venv.
-echo Installing the cauchan project and compatible dependencies...
+echo Required core backend packages are missing or incompatible in .venv.
+echo Installing or upgrading the cauchan project and compatible dependencies...
 pushd "%~dp0"
 where uv >nul 2>&1
 if not errorlevel 1 (
-    uv pip install --python "%VENV_PYTHON%" -e .
+    uv pip install --python "%VENV_PYTHON%" --upgrade -e .
 ) else (
     "%VENV_PYTHON%" -m pip --version >nul 2>&1
     if errorlevel 1 (
@@ -169,28 +186,56 @@ if not errorlevel 1 (
         pause
         exit /b 1
     )
-    "%VENV_PYTHON%" -m pip install -e .
+    "%VENV_PYTHON%" -m pip install --upgrade -e .
 )
 if errorlevel 1 (
     popd
     echo.
     echo [ERROR] Failed to install the cauchan Python dependencies.
-    echo With uv, run: uv pip install --python .venv\Scripts\python.exe -e .
+    echo With uv, run: uv pip install --python .venv\Scripts\python.exe --upgrade -e .
     echo.
     pause
     exit /b 1
 )
 popd
 
-"%VENV_PYTHON%" -c "%BACKEND_DEPENDENCY_CHECK%" >nul 2>&1
+"%VENV_PYTHON%" -c "%BACKEND_DEPENDENCY_CHECK%"
 if errorlevel 1 (
     echo.
-    echo [ERROR] Backend dependencies are still unavailable or incompatible after installation.
-    echo Check the installation output above. DoWhy currently requires pandas less than 3.
+    echo [ERROR] Core backend dependencies are still unavailable after installation.
+    echo The traceback above identifies the package that prevents FastAPI startup.
     echo.
     pause
     exit /b 1
 )
+
+call :warn_optional_dependencies_venv
+exit /b 0
+
+:warn_optional_dependencies_venv
+"%VENV_PYTHON%" -c "%OPTIONAL_INFERENCE_DEPENDENCY_CHECK%" >nul 2>&1
+if not errorlevel 1 exit /b 0
+
+echo.
+echo [WARNING] DoWhy, EconML, or LightGBM could not be imported.
+echo The Web app and SCM inference can still start.
+echo DoWhyLinearRegression, LinearDML, and CausalForestDML may be unavailable.
+echo Import diagnostic:
+"%VENV_PYTHON%" -c "%OPTIONAL_INFERENCE_DEPENDENCY_CHECK%"
+echo.
+exit /b 0
+
+:warn_optional_dependencies_uv
+uv run python -c "%OPTIONAL_INFERENCE_DEPENDENCY_CHECK%" >nul 2>&1
+if not errorlevel 1 exit /b 0
+
+echo.
+echo [WARNING] DoWhy, EconML, or LightGBM could not be imported.
+echo The Web app and SCM inference can still start.
+echo DoWhyLinearRegression, LinearDML, and CausalForestDML may be unavailable.
+echo Import diagnostic:
+uv run python -c "%OPTIONAL_INFERENCE_DEPENDENCY_CHECK%"
+echo.
 exit /b 0
 
 :ensure_port_available
@@ -220,11 +265,8 @@ echo cauchan FastAPI backend
 echo ========================================
 echo.
 
-if not exist "%APP_DIR%\cauchan\api\app.py" (
-    echo [ERROR] FastAPI application was not found: %APP_DIR%\cauchan\api\app.py
-    pause
-    exit /b 1
-)
+call :validate_project_files
+if errorlevel 1 exit /b 1
 
 call :ensure_backend_dependencies
 if errorlevel 1 exit /b 1
