@@ -34,8 +34,8 @@ test("causal inference factors and methods can be reselected", () => {
   assert.match(pageSource, /setDraftTreatment\(""\)/);
   assert.match(pageSource, /setDraftOutcome\(""\)/);
   assert.match(pageSource, /function reselectInferenceMethod\(\): void/);
-  assert.match(pageSource, /因子を選び直す/);
-  assert.match(pageSource, /推定手法を選び直す/);
+  assert.match(pageSource, /onClick=\{reselectInferenceFactors\}>因子を選び直す/);
+  assert.match(pageSource, /onClick=\{reselectInferenceMethod\}>推定手法を選び直す/);
   assert.match(pageSource, /stage === "confirm" \|\| stage === "result"/);
 });
 
