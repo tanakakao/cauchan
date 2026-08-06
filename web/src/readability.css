@@ -1,0 +1,235 @@
+/* Readability overrides aligned with bochan and malchan, loaded last. */
+:root {
+  --ui-control-font-size: 15px;
+  --ui-label-font-size: 14px;
+  --ui-secondary-font-size: 13px;
+  --ui-kicker-font-size: 12px;
+}
+
+body {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+button:not(.icon-button),
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  font-size: var(--ui-control-font-size) !important;
+  line-height: 1.4;
+}
+
+button:not(.icon-button) {
+  min-height: 40px;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  min-height: 40px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  height: 18px;
+}
+
+label,
+dt,
+th,
+.field-label,
+.form-label,
+.setting-label,
+.control-label,
+.edge-mode-label,
+.inference-field-label {
+  font-size: var(--ui-label-font-size) !important;
+  line-height: 1.45;
+}
+
+p,
+li,
+dd,
+td,
+.section-header p,
+.panel-title p,
+.inline-alert-copy p,
+.mode-guidance,
+.empty-state,
+.validation-message,
+.inference-description,
+.inference-result-copy {
+  font-size: 15px !important;
+  line-height: 1.6;
+}
+
+small,
+.helper-text,
+.help-text,
+.field-help,
+.setting-help,
+.form-help,
+.muted,
+.caption,
+.description,
+.rail-note p,
+.runtime-large small,
+.inference-note,
+.edge-action-hint {
+  font-size: var(--ui-secondary-font-size) !important;
+  line-height: 1.5;
+}
+
+.workflow-step strong,
+.tab strong,
+.portal-button,
+.panel-title h3,
+.side-card-title strong,
+.structure-source-switch button > strong,
+.structure-route-note h3,
+.embedded-validation > div strong,
+.selected-structure-summary > div strong,
+.selected-edge-definition strong,
+.inference-result-card h3,
+.causal-node-copy strong {
+  font-size: 15px !important;
+  line-height: 1.4;
+}
+
+.tab small,
+.context-list,
+.context-list span,
+.context-list strong,
+.runtime-copy,
+.rail-note,
+.statusbar,
+.edge-action-hint,
+.causal-node-copy small {
+  font-size: var(--ui-secondary-font-size) !important;
+}
+
+.rail-section-label,
+.eyebrow,
+.panel-kicker,
+.side-card-title span,
+.status-chip,
+.busy-state,
+.selected-edge-definition small,
+.embedded-validation > div span,
+.selected-structure-summary > div span,
+.node-badge {
+  font-size: var(--ui-kicker-font-size) !important;
+  letter-spacing: 0.08em;
+}
+
+.brand-wordmark p {
+  font-size: 10px !important;
+  line-height: 1.25;
+}
+
+.runtime-copy small {
+  font-size: 11px !important;
+}
+
+.runtime-copy strong {
+  font-size: 13px !important;
+}
+
+.tabs .tab {
+  min-height: 58px;
+}
+
+.context-list > div {
+  gap: 12px;
+}
+
+.context-list span,
+.context-list strong {
+  line-height: 1.45;
+}
+
+.side-card-title {
+  gap: 4px;
+}
+
+.causal-node {
+  min-width: 154px;
+}
+
+.causal-node-copy {
+  gap: 3px;
+}
+
+.causal-node-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.node-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+}
+
+.structure-source-switch button {
+  min-height: 112px;
+}
+
+.edge-action-grid button,
+.discovery-editor-toolbar button,
+.editor-status-group button,
+.graph-toolbar button {
+  min-height: 36px;
+  font-size: 14px !important;
+}
+
+.edge-action-grid button {
+  padding: 9px 10px;
+}
+
+.selected-edge-definition strong {
+  line-height: 1.5;
+}
+
+.inference-result-table th,
+.inference-result-table td,
+table th,
+table td {
+  font-size: 14px !important;
+  line-height: 1.5;
+}
+
+.inline-alert-copy strong {
+  font-size: 15px !important;
+}
+
+.inline-alert-copy small {
+  font-size: var(--ui-secondary-font-size) !important;
+}
+
+.busy-card h3 {
+  font-size: 18px !important;
+}
+
+.busy-card p {
+  font-size: 15px !important;
+}
+
+@media (max-width: 720px) {
+  body,
+  button:not(.icon-button),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 15px !important;
+  }
+
+  .workflow-step strong,
+  .tab strong,
+  .panel-title h3,
+  .section-header h2,
+  .causal-node-copy strong {
+    font-size: 15px !important;
+  }
+}
