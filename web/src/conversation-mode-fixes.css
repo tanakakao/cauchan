@@ -1,0 +1,10 @@
+.conversation-feature.selected .conversation-check {
+  color: #ffffff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.conversation-feature.category.selected .conversation-check {
+  background: var(--warning);
+  border-color: var(--warning);
+}
