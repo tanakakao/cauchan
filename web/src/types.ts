@@ -7,6 +7,7 @@ export type InferenceMethod =
   | "DoWhyLinearRegression"
   | "LinearDML"
   | "CausalForestDML";
+export type ImputationMethod = "median" | "most_frequent";
 export type EdgeMode = "causal" | "required" | "forbidden";
 export type StructureSource = "manual" | "discovery";
 export type InferenceSource = StructureSource;
@@ -22,10 +23,16 @@ export type DatasetResponse = {
   row_count: number;
   columns: string[];
   dtypes: Record<string, string>;
+  source_missing_counts: Record<string, number>;
   missing_counts: Record<string, number>;
+  imputed_counts: Record<string, number>;
+  imputation_methods: Record<string, ImputationMethod>;
+  preprocessing_applied: boolean;
 };
 
 export type GraphEdgeResponse = EdgeDefinition & {
+  source: string;
+  target: string;
   kind: "directed" | "undirected";
   weight: number | null;
 };
