@@ -99,6 +99,10 @@ function progressGroup(stage: Stage): string {
   return stage;
 }
 
+function isMissingDirectedPathError(message: string): boolean {
+  return /有向経路がありません|有向経路が存在しません/.test(message);
+}
+
 export default function ConversationPage({ onOpenStep }: ConversationPageProps) {
   const {
     dataset,
@@ -263,6 +267,17 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
     }
     if (!busy && error) {
       setAwaitingInference(false);
+      if (isMissingDirectedPathError(error)) {
+        setDraftTreatment("");
+        setDraftOutcome("");
+        setStage("treatment");
+        append(
+          "assistant",
+          `${error} 因果構造は維持しています。介入変数と結果変数の組み合わせを選び直してください。`,
+        );
+        setError(null);
+        return;
+      }
       setStage("confirm");
       append("assistant", "因果効果を推定できませんでした。因果構造と推定条件を確認してください。");
     }
@@ -370,6 +385,27 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
     setStage("confirm");
   }
 
+  function reselectInferenceFactors(): void {
+    setDraftTreatment("");
+    setDraftOutcome("");
+    setStage("treatment");
+    append("user", "介入変数と結果変数を選び直します。");
+    append("assistant", "因果構造は維持したまま、介入変数から選び直してください。");
+  }
+
+  function reselectInferenceMethod(): void {
+    if (!draftTreatment || !draftOutcome) {
+      reselectInferenceFactors();
+      return;
+    }
+    setStage("method");
+    append("user", "因果効果の推定手法を選び直します。");
+    append(
+      "assistant",
+      `${draftTreatment}から${draftOutcome}への因果効果について、推定手法を選び直してください。`,
+    );
+  }
+
   async function executeInference(): Promise<void> {
     if (!draftTreatment || !draftOutcome || awaitingInference || busy) return;
     previousInference.current = inference;
@@ -388,6 +424,22 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
 
     if (/やり直|最初|リセット/.test(text)) {
       resetConversation();
+      return;
+    }
+
+    if (
+      (stage === "confirm" || stage === "result")
+      && /(因子|介入変数|結果変数|変数).*(選び直|再選択|変更)/.test(text)
+    ) {
+      reselectInferenceFactors();
+      return;
+    }
+
+    if (
+      (stage === "confirm" || stage === "result")
+      && /(手法|方法|モデル).*(選び直|再選択|変更)/.test(text)
+    ) {
+      reselectInferenceMethod();
       return;
     }
 
@@ -706,6 +758,9 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
                     </button>
                   ))}
                 </div>
+                <div className="conversation-card-actions">
+                  <button type="button" className="secondary" onClick={reselectInferenceFactors}>介入変数から選び直す</button>
+                </div>
               </div>
             )}
 
@@ -714,10 +769,19 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
                 <strong>因果効果の推定手法</strong>
                 <div className="conversation-choice-grid two-columns">
                   {METHODS.map((method) => (
-                    <button key={method.id} type="button" className="secondary" onClick={() => selectMethod(method.id)}>
+                    <button
+                      key={method.id}
+                      type="button"
+                      className={draftMethod === method.id ? "selected" : "secondary"}
+                      aria-pressed={draftMethod === method.id}
+                      onClick={() => selectMethod(method.id)}
+                    >
                       <strong>{method.label}</strong><small>{method.description}</small>
                     </button>
                   ))}
+                </div>
+                <div className="conversation-card-actions">
+                  <button type="button" className="secondary" onClick={reselectInferenceFactors}>因子を選び直す</button>
                 </div>
               </div>
             )}
@@ -732,9 +796,13 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
                   <div><dt>推定手法</dt><dd>{selectedMethod.label}</dd></div>
                   <div><dt>分析変数</dt><dd>{analysisColumns.length}列</dd></div>
                 </dl>
-                <button type="button" disabled={Boolean(busy) || awaitingInference} onClick={() => void executeInference()}>
-                  {awaitingInference ? "因果効果を推定中..." : "因果効果を推定"}
-                </button>
+                <div className="conversation-card-actions">
+                  <button type="button" className="secondary" onClick={reselectInferenceFactors}>因子を選び直す</button>
+                  <button type="button" className="secondary" onClick={reselectInferenceMethod}>推定手法を選び直す</button>
+                  <button type="button" disabled={Boolean(busy) || awaitingInference} onClick={() => void executeInference()}>
+                    {awaitingInference ? "因果効果を推定中..." : "因果効果を推定"}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -754,7 +822,8 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
                 <p>{inference.interpretation}</p>
                 <div className="conversation-result-actions">
                   <button type="button" onClick={() => onOpenStep("inference")}>Inference画面で詳しく見る</button>
-                  <button type="button" className="secondary" onClick={() => setStage("treatment")}>変数を変えて再推定</button>
+                  <button type="button" className="secondary" onClick={reselectInferenceFactors}>因子を選び直す</button>
+                  <button type="button" className="secondary" onClick={reselectInferenceMethod}>推定手法を選び直す</button>
                   <button type="button" className="secondary" onClick={resetConversation}>最初から確認する</button>
                 </div>
               </div>

@@ -1,0 +1,22 @@
+/* User messages are rendered on the right side of the conversation thread. */
+.conversation-message.user {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+.conversation-message.user .conversation-avatar {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.conversation-message.user .conversation-bubble {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  border-radius: 17px 5px 17px 17px;
+}
+
+@media (max-width: 720px) {
+  .conversation-message.user {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+}

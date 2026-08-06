@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from ..preprocessing import PreprocessingError, impute_missing_values
 from .inference_service import run_batch_inference, run_inference
 from .schemas import (
     BatchInferenceRequest,
@@ -40,7 +41,7 @@ def _cors_origins() -> list[str]:
 
 app = FastAPI(
     title="cauchan API",
-    version="0.2.0",
+    version="0.3.0",
     description="因果構造探索と因果効果推定を提供するAPI",
 )
 app.add_middleware(
@@ -52,8 +53,8 @@ app.add_middleware(
 )
 
 
-def _bad_request(exc: ServiceError) -> HTTPException:
-    """サービス例外をHTTP 422へ変換する。"""
+def _bad_request(exc: ServiceError | PreprocessingError) -> HTTPException:
+    """サービス・前処理例外をHTTP 422へ変換する。"""
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=str(exc),
@@ -84,17 +85,19 @@ def health() -> HealthResponse:
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_dataset(file: UploadFile = File(...)) -> DatasetResponse:
-    """CSVまたはExcelをメモリへ登録する。"""
+    """CSVまたはExcelを読み込み、欠損補完後のデータを登録する。"""
     filename = file.filename or "uploaded.csv"
     content = await file.read()
     if not content:
         raise HTTPException(status_code=422, detail="アップロードファイルが空です。")
 
     try:
-        dataframe = read_dataframe(filename, content)
-    except ServiceError as exc:
+        source_dataframe = read_dataframe(filename, content)
+        preprocessing = impute_missing_values(source_dataframe)
+    except (ServiceError, PreprocessingError) as exc:
         raise _bad_request(exc) from exc
 
+    dataframe = preprocessing.dataframe
     record = store.add_dataset(filename=filename, dataframe=dataframe)
     return DatasetResponse(
         dataset_id=record.dataset_id,
@@ -102,10 +105,11 @@ async def upload_dataset(file: UploadFile = File(...)) -> DatasetResponse:
         row_count=len(dataframe),
         columns=dataframe.columns.tolist(),
         dtypes={column: str(dtype) for column, dtype in dataframe.dtypes.items()},
-        missing_counts={
-            column: int(count)
-            for column, count in dataframe.isna().sum().items()
-        },
+        source_missing_counts=preprocessing.source_missing_counts,
+        missing_counts=preprocessing.remaining_missing_counts,
+        imputed_counts=preprocessing.imputed_counts,
+        imputation_methods=preprocessing.methods,
+        preprocessing_applied=preprocessing.applied,
     )
 
 
