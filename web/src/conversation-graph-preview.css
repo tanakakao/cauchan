@@ -1,0 +1,133 @@
+.conversation-page-host[hidden],
+.workbench-page-host[hidden] {
+  display: none !important;
+}
+
+.conversation-graph-preview-layout {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 18px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.conversation-graph-preview {
+  min-width: 0;
+  padding: 17px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.conversation-graph-preview-heading,
+.conversation-graph-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.conversation-graph-preview-heading > div:first-child {
+  min-width: 0;
+}
+
+.conversation-graph-preview-heading span {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.conversation-graph-preview-heading h3 {
+  margin: 4px 0 5px;
+  font-size: 18px;
+}
+
+.conversation-graph-preview-heading p,
+.conversation-graph-preview-footer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.conversation-graph-preview-status {
+  flex: 0 0 auto;
+  min-width: 132px;
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  text-align: right;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+
+.conversation-graph-preview-status span {
+  letter-spacing: 0;
+}
+
+.conversation-graph-preview-status strong {
+  font-size: 14px;
+}
+
+.conversation-graph-preview-canvas {
+  height: clamp(300px, 36vw, 430px);
+  margin-top: 13px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.conversation-graph-preview-canvas .graph-canvas {
+  height: 100% !important;
+  min-height: 100% !important;
+  border: 0;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.conversation-graph-preview-canvas .react-flow__controls,
+.conversation-graph-preview-canvas .react-flow__minimap {
+  display: none;
+}
+
+.conversation-graph-preview-footer {
+  margin-top: 12px;
+}
+
+.conversation-graph-preview-footer p {
+  max-width: 720px;
+}
+
+@media (max-width: 1180px) {
+  .conversation-graph-preview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-graph-preview-layout > div[aria-hidden="true"] {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .conversation-graph-preview-heading,
+  .conversation-graph-preview-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .conversation-graph-preview-status {
+    width: 100%;
+    text-align: left;
+  }
+
+  .conversation-graph-preview-canvas {
+    height: 320px;
+  }
+}
