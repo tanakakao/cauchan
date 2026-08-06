@@ -9,8 +9,10 @@ on:
       - "src/cauchan/api/app.py"
       - "src/cauchan/api/inference_service.py"
       - "src/cauchan/api/schemas.py"
+      - "src/cauchan/preprocessing/**"
       - "src/cauchan/models/**"
       - "tests/test_causal_effect_estimator.py"
+      - "tests/test_missing_values.py"
       - "tests/test_web_port_configuration.py"
       - ".github/workflows/web.yml"
   push:
@@ -22,8 +24,10 @@ on:
       - "src/cauchan/api/app.py"
       - "src/cauchan/api/inference_service.py"
       - "src/cauchan/api/schemas.py"
+      - "src/cauchan/preprocessing/**"
       - "src/cauchan/models/**"
       - "tests/test_causal_effect_estimator.py"
+      - "tests/test_missing_values.py"
       - "tests/test_web_port_configuration.py"
       - ".github/workflows/web.yml"
 
@@ -53,10 +57,13 @@ jobs:
           "dowhy>=0.11"
           "econml>=0.15"
           "lightgbm>=4.0"
-      - name: Run model inference tests
+      - name: Run model and preprocessing tests
         env:
           PYTHONPATH: src
-        run: python -m unittest tests.test_causal_effect_estimator
+        run: >-
+          python -m unittest
+          tests.test_causal_effect_estimator
+          tests.test_missing_values
 
   build:
     runs-on: ubuntu-latest
@@ -68,7 +75,7 @@ jobs:
       - name: Validate reserved ports
         run: python -m unittest discover -s tests -p "test_web_port_configuration.py"
       - name: Validate Python syntax
-        run: python -m compileall -q src/cauchan/api src/cauchan/models
+        run: python -m compileall -q src/cauchan/api src/cauchan/preprocessing src/cauchan/models
       - name: Install dependencies
         working-directory: web
         run: npm install
