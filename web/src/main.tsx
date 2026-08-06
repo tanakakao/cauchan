@@ -14,6 +14,7 @@ import "./readability.css";
 import "./conversation-mode.css";
 import "./conversation-mode-fixes.css";
 import "./conversation-user-alignment.css";
+import "./conversation-graph-preview.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

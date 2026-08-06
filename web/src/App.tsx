@@ -1,4 +1,5 @@
 import { useState, type ComponentType } from "react";
+import ConversationGraphPreview from "./components/ConversationGraphPreview";
 import ConversationIcon from "./components/ConversationIcon";
 import { STEPS, WorkbenchProvider, useWorkbench } from "./context/WorkbenchContext";
 import ConversationPage from "./pages/ConversationPage";
@@ -194,9 +195,13 @@ function WorkbenchLayout() {
                 </button>
               </div>
             )}
-            {conversationOpen
-              ? <ConversationPage onOpenStep={openStep} />
-              : <Page />}
+            <div className="conversation-page-host" hidden={!conversationOpen}>
+              <ConversationPage onOpenStep={openStep} />
+              <ConversationGraphPreview onOpenStep={openStep} active={conversationOpen} />
+            </div>
+            <div className="workbench-page-host" hidden={conversationOpen}>
+              <Page />
+            </div>
           </div>
         </section>
 

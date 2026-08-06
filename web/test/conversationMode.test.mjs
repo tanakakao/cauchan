@@ -6,7 +6,9 @@ const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "ut
 const pageSource = await readFile(new URL("../src/pages/ConversationPage.tsx", import.meta.url), "utf8");
 const dataPageSource = await readFile(new URL("../src/pages/DataPage.tsx", import.meta.url), "utf8");
 const iconSource = await readFile(new URL("../src/components/ConversationIcon.tsx", import.meta.url), "utf8");
+const graphPreviewSource = await readFile(new URL("../src/components/ConversationGraphPreview.tsx", import.meta.url), "utf8");
 const styleSource = await readFile(new URL("../src/conversation-mode.css", import.meta.url), "utf8");
+const graphPreviewStyleSource = await readFile(new URL("../src/conversation-graph-preview.css", import.meta.url), "utf8");
 const alignmentSource = await readFile(new URL("../src/conversation-user-alignment.css", import.meta.url), "utf8");
 const mainSource = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
 const typesSource = await readFile(new URL("../src/types.ts", import.meta.url), "utf8");
@@ -75,11 +77,13 @@ test("conversation styles load after theme and readability overrides", () => {
   const readabilityIndex = mainSource.indexOf('import "./readability.css"');
   const conversationIndex = mainSource.indexOf('import "./conversation-mode.css"');
   const alignmentIndex = mainSource.indexOf('import "./conversation-user-alignment.css"');
+  const graphPreviewIndex = mainSource.indexOf('import "./conversation-graph-preview.css"');
 
   assert.ok(themeIndex >= 0);
   assert.ok(readabilityIndex > themeIndex);
   assert.ok(conversationIndex > readabilityIndex);
   assert.ok(alignmentIndex > conversationIndex);
+  assert.ok(graphPreviewIndex > alignmentIndex);
 });
 
 test("missing directed path errors return to inference factor selection", () => {
@@ -90,4 +94,23 @@ test("missing directed path errors return to inference factor selection", () => 
     /if \(isMissingDirectedPathError\(error\)\)[\s\S]*setDraftTreatment\(""\)[\s\S]*setDraftOutcome\(""\)[\s\S]*setStage\("treatment"\)[\s\S]*setError\(null\)/,
   );
   assert.match(pageSource, /因果構造は維持しています。介入変数と結果変数の組み合わせを選び直してください。/);
+});
+
+test("conversation remains mounted while workflow editors are opened", () => {
+  assert.match(appSource, /className="conversation-page-host" hidden=\{!conversationOpen\}/);
+  assert.match(appSource, /<ConversationPage onOpenStep=\{openStep\} \/>/);
+  assert.match(appSource, /<ConversationGraphPreview onOpenStep=\{openStep\} active=\{conversationOpen\} \/>/);
+  assert.match(appSource, /className="workbench-page-host" hidden=\{conversationOpen\}/);
+});
+
+test("conversation shows a non-interactive causal graph below the chat", () => {
+  assert.match(graphPreviewSource, /import GraphCanvas from "\.\/GraphCanvas"/);
+  assert.match(graphPreviewSource, /resultEdges=\{editedDiscoveryEdges\}/);
+  assert.match(graphPreviewSource, /causalEdges=\{causalEdges\}/);
+  assert.match(graphPreviewSource, /editable=\{false\}/);
+  assert.match(graphPreviewSource, /layoutVersion=\{layoutVersion\}/);
+  assert.match(graphPreviewSource, /Discovery画面で編集/);
+  assert.match(graphPreviewStyleSource, /\.conversation-graph-preview-layout[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 290px/);
+  assert.match(graphPreviewStyleSource, /\.conversation-graph-preview-canvas[\s\S]*pointer-events:\s*none/);
+  assert.match(graphPreviewStyleSource, /react-flow__controls[\s\S]*display:\s*none/);
 });
