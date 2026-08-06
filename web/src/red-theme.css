@@ -1,0 +1,195 @@
+/* Shared bochan / malchan color system, loaded after page-specific styles. */
+:root {
+  --bg: #fcfbfb;
+  --bg-deep: #f4eeee;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-subtle: #faf6f6;
+  --surface-strong: #f1eaea;
+  --line: rgba(53, 43, 43, 0.10);
+  --line-strong: rgba(53, 43, 43, 0.18);
+  --text: #302929;
+  --muted: #716565;
+  --subtle: #9b8e8e;
+  --primary: #b94f57;
+  --primary-hover: #a64249;
+  --primary-soft: #fbecee;
+  --primary-soft-strong: #f5d9dc;
+  --success: #9f4b51;
+  --success-soft: #f8e9ea;
+  --warning: #bf672d;
+  --warning-soft: #fff0e4;
+  --danger: #b53e47;
+  --danger-soft: #fbe6e8;
+  --shadow-xs: 0 1px 2px rgba(52, 43, 43, 0.035);
+  --shadow-sm: 0 1px 3px rgba(52, 43, 43, 0.055),
+               0 7px 20px rgba(52, 43, 43, 0.04);
+  --shadow: 0 18px 48px rgba(52, 43, 43, 0.13);
+}
+
+html[data-theme="dark"] {
+  --bg: #201a1a;
+  --bg-deep: #171313;
+  --surface: #292222;
+  --surface-raised: #302828;
+  --surface-subtle: #332b2b;
+  --surface-strong: #3c3232;
+  --line: rgba(255, 242, 242, 0.09);
+  --line-strong: rgba(255, 242, 242, 0.17);
+  --text: #faf4f4;
+  --muted: #c9bbbb;
+  --subtle: #9f9090;
+  --primary: #e3949a;
+  --primary-hover: #efabb0;
+  --primary-soft: rgba(213, 82, 92, 0.16);
+  --primary-soft-strong: rgba(213, 82, 92, 0.27);
+  --success: #df8e94;
+  --success-soft: rgba(205, 79, 89, 0.16);
+  --warning: #eda160;
+  --warning-soft: rgba(218, 124, 48, 0.16);
+  --danger: #f08b93;
+  --danger-soft: rgba(211, 63, 75, 0.18);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.24),
+               0 10px 28px rgba(0, 0, 0, 0.15);
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+}
+
+body {
+  background:
+    radial-gradient(
+      circle at 42% -10%,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 34rem
+    ),
+    linear-gradient(180deg, var(--bg), var(--bg-deep));
+}
+
+::selection {
+  color: var(--text);
+  background: var(--primary-soft-strong);
+}
+
+.brand-mark {
+  color: #ffffff;
+  background: var(--text);
+  border-color: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.workflow-step.active,
+.tab.active {
+  color: var(--primary);
+  background: var(--primary-soft-strong);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--line));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent),
+    var(--shadow-xs);
+}
+
+.workflow-step.active span,
+.tab.active em,
+.tab.active .nav-icon {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary-soft-strong) 82%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
+}
+
+.tab.active::before {
+  background: var(--primary);
+}
+
+button:hover:not(:disabled) {
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.statusbar {
+  color: #e8dddd;
+  background: #211b1b;
+  border-top-color: #3b3030;
+}
+
+.statusbar .privacy-status {
+  color: #e3a1a6;
+}
+
+.busy-state {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
+}
+
+.causal-node {
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.causal-node:hover,
+.causal-node.selected {
+  border-color: color-mix(in srgb, var(--primary) 54%, var(--line));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent),
+    var(--shadow-sm);
+}
+
+.causal-node-copy small,
+.selected-edge-definition small,
+.embedded-validation > div span,
+.selected-structure-summary > div span {
+  color: var(--primary);
+}
+
+.node-badge.parent {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.node-badge.child {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.react-flow__background {
+  background-color: color-mix(in srgb, var(--surface-subtle) 88%, transparent);
+}
+
+.react-flow__controls,
+.react-flow__minimap {
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.react-flow__controls-button {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-bottom-color: var(--line);
+}
+
+.react-flow__controls-button:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary) 38%, transparent));
+}
+
+.structure-route-note,
+.edge-action-panel,
+.selected-edge-definition,
+.selected-structure-summary,
+.embedded-validation {
+  box-shadow: var(--shadow-xs);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+}

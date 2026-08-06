@@ -9,6 +9,8 @@ import "./inference-results.css";
 import "./workbench-design.css";
 import "./workbench-states.css";
 import "./data-dropzone.css";
+import "./red-theme.css";
+import "./readability.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
