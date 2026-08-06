@@ -1,5 +1,7 @@
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
+import ConversationIcon from "./components/ConversationIcon";
 import { STEPS, WorkbenchProvider, useWorkbench } from "./context/WorkbenchContext";
+import ConversationPage from "./pages/ConversationPage";
 import DataPage from "./pages/DataPage";
 import DiscoveryPage from "./pages/DiscoveryPage";
 import InferencePage from "./pages/InferencePage";
@@ -64,12 +66,18 @@ function WorkbenchLayout() {
     inference,
     canOpenStep,
   } = useWorkbench();
+  const [conversationOpen, setConversationOpen] = useState(false);
   const index = STEPS.findIndex(([id]) => id === step);
   const Page = PAGES[step];
   const finalEdgeCount = structureSource === "manual"
     ? causalEdges.length
     : editedDiscoveryEdges.filter((edge) => edge.kind === "directed").length;
   const apiStatusLabel = API_STATUS_LABELS[health.status];
+
+  function openStep(target: WorkbenchStep): void {
+    setConversationOpen(false);
+    setStep(target);
+  }
 
   return (
     <div className="app-root">
@@ -86,10 +94,10 @@ function WorkbenchLayout() {
           {STEPS.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
-                className={`workflow-step ${id === step ? "active" : ""} ${stepIndex < index && canOpenStep(id) ? "complete" : ""}`}
-                onClick={() => setStep(id)}
+                className={`workflow-step ${!conversationOpen && id === step ? "active" : ""} ${stepIndex < index && canOpenStep(id) ? "complete" : ""}`}
+                onClick={() => openStep(id)}
                 disabled={!canOpenStep(id)}
-                aria-current={id === step ? "step" : undefined}
+                aria-current={!conversationOpen && id === step ? "step" : undefined}
               >
                 <span>{stepIndex + 1}</span><strong>{label}</strong>
               </button>
@@ -127,15 +135,29 @@ function WorkbenchLayout() {
 
       <main className="app-shell">
         <aside className="left-rail">
+          <button
+            type="button"
+            className={`conversation-launcher ${conversationOpen ? "active" : ""}`}
+            onClick={() => setConversationOpen(true)}
+            aria-current={conversationOpen ? "page" : undefined}
+          >
+            <ConversationIcon className="conversation-launcher-icon" fallback="c" />
+            <span className="conversation-launcher-copy">
+              <strong>対話モード</strong>
+              <small>因果分析を順番に進める</small>
+            </span>
+            <span className="conversation-launcher-arrow" aria-hidden="true">›</span>
+          </button>
+
           <div className="rail-section-label">WORKFLOW</div>
           <nav className="tabs" aria-label="ページナビゲーション">
             {STEPS.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
-                className={`tab ${step === id ? "active" : ""} ${stepIndex < index && canOpenStep(id) ? "complete" : ""}`}
-                onClick={() => setStep(id)}
+                className={`tab ${!conversationOpen && step === id ? "active" : ""} ${stepIndex < index && canOpenStep(id) ? "complete" : ""}`}
+                onClick={() => openStep(id)}
                 disabled={!canOpenStep(id)}
-                aria-current={step === id ? "page" : undefined}
+                aria-current={!conversationOpen && step === id ? "page" : undefined}
               >
                 <span className="nav-icon">{ICONS[id]}</span>
                 <span><strong>{label}</strong><small>{detail}</small></span>
@@ -172,7 +194,9 @@ function WorkbenchLayout() {
                 </button>
               </div>
             )}
-            <Page />
+            {conversationOpen
+              ? <ConversationPage onOpenStep={openStep} />
+              : <Page />}
           </div>
         </section>
 
