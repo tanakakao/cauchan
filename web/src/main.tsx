@@ -11,6 +11,8 @@ import "./workbench-states.css";
 import "./data-dropzone.css";
 import "./red-theme.css";
 import "./readability.css";
+import "./conversation-mode.css";
+import "./conversation-mode-fixes.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

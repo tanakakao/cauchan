@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run test:theme-readability && tsc -b && vite build",
+    "build": "npm run test:theme-readability && npm run test:conversation-mode && tsc -b && vite build",
     "test:theme-readability": "node --test test/themeReadability.test.mjs",
+    "test:conversation-mode": "node --test test/conversationMode.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
