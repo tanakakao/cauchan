@@ -29,6 +29,16 @@ test("guided flow reuses existing causal analysis state and APIs", () => {
   assert.match(pageSource, /CausalForestDML/);
 });
 
+test("causal inference factors and methods can be reselected", () => {
+  assert.match(pageSource, /function reselectInferenceFactors\(\): void/);
+  assert.match(pageSource, /setDraftTreatment\(""\)/);
+  assert.match(pageSource, /setDraftOutcome\(""\)/);
+  assert.match(pageSource, /function reselectInferenceMethod\(\): void/);
+  assert.match(pageSource, /因子を選び直す/);
+  assert.match(pageSource, /推定手法を選び直す/);
+  assert.match(pageSource, /stage === "confirm" \|\| stage === "result"/);
+});
+
 test("manual structures and unresolved discovery edges hand off to existing editors", () => {
   assert.match(pageSource, /onOpenStep\("knowledge"\)/);
   assert.match(pageSource, /onOpenStep\("discovery"\)/);
