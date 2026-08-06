@@ -81,3 +81,13 @@ test("conversation styles load after theme and readability overrides", () => {
   assert.ok(conversationIndex > readabilityIndex);
   assert.ok(alignmentIndex > conversationIndex);
 });
+
+test("missing directed path errors return to inference factor selection", () => {
+  assert.match(pageSource, /function isMissingDirectedPathError/);
+  assert.match(pageSource, /有向経路がありません\|有向経路が存在しません/);
+  assert.match(
+    pageSource,
+    /if \(isMissingDirectedPathError\(error\)\)[\s\S]*setDraftTreatment\(""\)[\s\S]*setDraftOutcome\(""\)[\s\S]*setStage\("treatment"\)[\s\S]*setError\(null\)/,
+  );
+  assert.match(pageSource, /因果構造は維持しています。介入変数と結果変数の組み合わせを選び直してください。/);
+});

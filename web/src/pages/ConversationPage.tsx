@@ -99,6 +99,10 @@ function progressGroup(stage: Stage): string {
   return stage;
 }
 
+function isMissingDirectedPathError(message: string): boolean {
+  return /有向経路がありません|有向経路が存在しません/.test(message);
+}
+
 export default function ConversationPage({ onOpenStep }: ConversationPageProps) {
   const {
     dataset,
@@ -263,6 +267,17 @@ export default function ConversationPage({ onOpenStep }: ConversationPageProps) 
     }
     if (!busy && error) {
       setAwaitingInference(false);
+      if (isMissingDirectedPathError(error)) {
+        setDraftTreatment("");
+        setDraftOutcome("");
+        setStage("treatment");
+        append(
+          "assistant",
+          `${error} 因果構造は維持しています。介入変数と結果変数の組み合わせを選び直してください。`,
+        );
+        setError(null);
+        return;
+      }
       setStage("confirm");
       append("assistant", "因果効果を推定できませんでした。因果構造と推定条件を確認してください。");
     }
