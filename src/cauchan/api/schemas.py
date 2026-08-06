@@ -12,6 +12,7 @@ InferenceMethod = Literal[
     "LinearDML",
     "CausalForestDML",
 ]
+ImputationMethod = Literal["median", "most_frequent"]
 EdgeKind = Literal["directed", "undirected"]
 
 
@@ -23,14 +24,18 @@ class EdgeDefinition(BaseModel):
 
 
 class DatasetResponse(BaseModel):
-    """登録したデータセットの概要。"""
+    """登録・前処理済みデータセットの概要。"""
 
     dataset_id: str
     filename: str
     row_count: int
     columns: list[str]
     dtypes: dict[str, str]
+    source_missing_counts: dict[str, int]
     missing_counts: dict[str, int]
+    imputed_counts: dict[str, int]
+    imputation_methods: dict[str, ImputationMethod]
+    preprocessing_applied: bool
 
 
 class DiscoveryRequest(BaseModel):
